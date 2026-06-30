@@ -144,6 +144,7 @@ FA_HETZNER_PROVISIONER_KEY_FILE="/etc/fa/keys/provisioner-sa-key.json"
 runtime_sa_key_file="/run/secrets/fa-runtime-sa-key.json"
 deploy_user="deploy"
 temp_env_file=""
+release_arg=""
 
 FA_RUNTIME_SECRET_BINDINGS=(
   FA_INTERNAL_AUTH_TOKEN=FA_INTERNAL_AUTH_TOKEN
@@ -186,7 +187,7 @@ is_placeholder_value() {
 }
 
 parse_args() {
-  local release_arg=""
+  release_arg=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -232,7 +233,6 @@ parse_args() {
   done
 
   [[ -n "${release_arg}" ]] || fail "Usage: fa-load-secrets --auth0-domain value --auth0-client-id value --auth0-audience value <release-or-current-dir>"
-  printf '%s\n' "${release_arg}"
 }
 
 canonical_release_dir() {
@@ -404,10 +404,9 @@ install_site_basic_auth_files() {
 }
 
 main() {
-  local release_arg=""
   local release_dir=""
 
-  release_arg="$(parse_args "$@")"
+  parse_args "$@"
   release_dir="$(canonical_release_dir "${release_arg}")"
   command -v gcloud >/dev/null 2>&1 || fail "gcloud CLI is required"
   id -u "${deploy_user}" >/dev/null 2>&1 || fail "Deploy user ${deploy_user} is required"
