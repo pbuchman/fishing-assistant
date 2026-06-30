@@ -162,12 +162,6 @@ FA_OPTIONAL_RUNTIME_SECRETS=(
   FA_INTERNAL_AUTH_TOKEN_PREVIOUS
 )
 
-FA_SITE_BASIC_AUTH_SECRETS=(
-  FA_SITE_BASIC_AUTH_USER
-  FA_SITE_BASIC_AUTH_HTPASSWD
-  FA_SITE_BASIC_AUTH_CHECK_HEADER
-)
-
 FA_PUBLIC_RUNTIME_CONFIG=(
   FA_AUTH0_DOMAIN
   FA_AUTH0_CLIENT_ID
@@ -377,33 +371,6 @@ append_optional_secret() {
   write_env_line "${output_path}" "${secret_name}" ""
 }
 
-install_site_basic_auth_files() {
-  local release_dir="$1"
-  local auth_dir="${release_dir}/.fa"
-  local htpasswd_value=""
-  local check_header_value=""
-  local secret_name=""
-
-  for secret_name in "${FA_SITE_BASIC_AUTH_SECRETS[@]}"; do
-    validate_secret_name "${secret_name}"
-  done
-
-  install -d -m 755 -o "${deploy_user}" -g "${deploy_user}" "${auth_dir}"
-
-  htpasswd_value="$(read_secret FA_SITE_BASIC_AUTH_HTPASSWD)" ||
-    fail "Unable to read FA_SITE_BASIC_AUTH_HTPASSWD"
-  check_header_value="$(read_secret FA_SITE_BASIC_AUTH_CHECK_HEADER)" ||
-    fail "Unable to read FA_SITE_BASIC_AUTH_CHECK_HEADER"
-
-  printf '%s\n' "${htpasswd_value}" > "${auth_dir}/site-basic-auth.htpasswd.tmp"
-  install -m 644 -o "${deploy_user}" -g "${deploy_user}" "${auth_dir}/site-basic-auth.htpasswd.tmp" "${auth_dir}/site-basic-auth.htpasswd"
-  rm -f "${auth_dir}/site-basic-auth.htpasswd.tmp"
-
-  printf '%s\n' "${check_header_value}" > "${auth_dir}/site-basic-auth.curl-header.tmp"
-  install -m 600 -o "${deploy_user}" -g "${deploy_user}" "${auth_dir}/site-basic-auth.curl-header.tmp" "${auth_dir}/site-basic-auth.curl-header"
-  rm -f "${auth_dir}/site-basic-auth.curl-header.tmp"
-}
-
 main() {
   local release_dir=""
 
@@ -429,7 +396,6 @@ main() {
     append_optional_secret "${temp_env_file}" "${secret_name}"
   done
 
-  install_site_basic_auth_files "${release_dir}"
   install -d -m 750 -o root -g "${deploy_user}" "$(dirname "${FA_PROD_ENV_FILE}")"
   install -m 640 -o root -g "${deploy_user}" "${temp_env_file}" "${FA_PROD_ENV_FILE}"
   printf 'Wrote %s with %s required and %s optional Secret Manager values\n' \
@@ -450,7 +416,6 @@ IFS=$'\n\t'
 app_root="/opt/fishing-assistant"
 site_target="/etc/nginx/sites-available/fishing-assistant.conf"
 site_enabled="/etc/nginx/sites-enabled/fishing-assistant.conf"
-site_basic_auth_target="/etc/nginx/fa-site-basic-auth.htpasswd"
 RELOAD_NGINX=1
 NGINX_MODE="https"
 NGINX_SOURCE_RELATIVE="scripts/hetzner/nginx/fishing-assistant.conf"
@@ -528,17 +493,6 @@ reload_nginx() {
   fi
 }
 
-install_site_basic_auth_file() {
-  local release_dir="$1"
-  local auth_source="${release_dir}/.fa/site-basic-auth.htpasswd"
-
-  [[ -r "${auth_source}" ]] || fail "Missing site Basic Auth file: ${auth_source}"
-  getent group www-data >/dev/null || fail "www-data group is required for nginx Basic Auth file"
-
-  install -d -m 755 "$(dirname "${site_basic_auth_target}")"
-  install -m 640 -o root -g www-data "${auth_source}" "${site_basic_auth_target}"
-}
-
 main() {
   [[ "$#" -ge 1 ]] || fail "Usage: fa-deploy-nginx <release-or-current-dir> [--origin-http-only] [--skip-reload]"
 
@@ -565,7 +519,6 @@ main() {
   command -v nginx >/dev/null 2>&1 || fail "nginx is required"
   nginx_source="$(canonical_nginx_source "${release_dir}" "${NGINX_SOURCE_RELATIVE}")"
 
-  install_site_basic_auth_file "${release_dir}"
   install -d -m 755 "$(dirname "${site_target}")" "$(dirname "${site_enabled}")"
   install -m 644 -o root -g root "${nginx_source}" "${site_target}"
   ln -sfn "${site_target}" "${site_enabled}"

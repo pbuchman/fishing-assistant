@@ -38,12 +38,6 @@ FA_OPTIONAL_RUNTIME_SECRETS=(
   FA_INTERNAL_AUTH_TOKEN_PREVIOUS
 )
 
-FA_SITE_BASIC_AUTH_SECRETS=(
-  FA_SITE_BASIC_AUTH_USER
-  FA_SITE_BASIC_AUTH_HTPASSWD
-  FA_SITE_BASIC_AUTH_CHECK_HEADER
-)
-
 FA_PUBLIC_RUNTIME_CONFIG=(
   FA_AUTH0_DOMAIN
   FA_AUTH0_CLIENT_ID
@@ -297,40 +291,6 @@ append_optional_secret() {
   write_env_line "${output_path}" "${secret_name}" ""
 }
 
-install_site_basic_auth_files() {
-  local output_path="$1"
-  local release_dir=""
-  local auth_dir=""
-  local htpasswd_value=""
-  local check_header_value=""
-
-  case "${output_path}" in
-    "${repo_root}/"*) ;;
-    *) return ;;
-  esac
-
-  for secret_name in "${FA_SITE_BASIC_AUTH_SECRETS[@]}"; do
-    validate_secret_name "${secret_name}"
-  done
-
-  release_dir="${repo_root}"
-  auth_dir="${release_dir}/.fa"
-  install -d -m 755 "${auth_dir}"
-
-  htpasswd_value="$(read_secret FA_SITE_BASIC_AUTH_HTPASSWD)" ||
-    fail "Unable to read FA_SITE_BASIC_AUTH_HTPASSWD"
-  check_header_value="$(read_secret FA_SITE_BASIC_AUTH_CHECK_HEADER)" ||
-    fail "Unable to read FA_SITE_BASIC_AUTH_CHECK_HEADER"
-
-  printf '%s\n' "${htpasswd_value}" > "${auth_dir}/site-basic-auth.htpasswd.tmp"
-  install -m 644 "${auth_dir}/site-basic-auth.htpasswd.tmp" "${auth_dir}/site-basic-auth.htpasswd"
-  rm -f "${auth_dir}/site-basic-auth.htpasswd.tmp"
-
-  printf '%s\n' "${check_header_value}" > "${auth_dir}/site-basic-auth.curl-header.tmp"
-  install -m 600 "${auth_dir}/site-basic-auth.curl-header.tmp" "${auth_dir}/site-basic-auth.curl-header"
-  rm -f "${auth_dir}/site-basic-auth.curl-header.tmp"
-}
-
 install_prod_env_file() {
   local output_dir=""
 
@@ -374,7 +334,6 @@ main() {
     append_optional_secret "${temp_env_file}" "${secret_name}"
   done
 
-  install_site_basic_auth_files "${FA_PROD_ENV_FILE}"
   install_prod_env_file
   printf 'Wrote %s with %s required and %s optional Secret Manager values\n' \
     "${FA_PROD_ENV_FILE}" \

@@ -1592,11 +1592,6 @@ const browserSafeAuth0RuntimeConfigNames = [
   'FA_AUTH0_CLIENT_ID',
   'FA_AUTH0_AUDIENCE',
 ];
-const siteBasicAuthSecretNames = [
-  'FA_SITE_BASIC_AUTH_USER',
-  'FA_SITE_BASIC_AUTH_HTPASSWD',
-  'FA_SITE_BASIC_AUTH_CHECK_HEADER',
-];
 const devOpenRouterSecretName = 'FA_DEV_OPENROUTER_APP_API_KEY';
 const prodOpenRouterSecretName = 'FA_PROD_OPENROUTER_APP_API_KEY';
 const runtimeOpenRouterEnvName = 'FA_OPENROUTER_APP_API_KEY';
@@ -2136,23 +2131,6 @@ function shellArrayIncludes(source, arrayName, item) {
   }
 
   return false;
-}
-
-/**
- * @param {string} source
- * @returns {boolean}
- */
-function hasSiteBasicAuthReleaseRendering(source) {
-  return (
-    siteBasicAuthSecretNames.every((name) =>
-      shellArrayIncludes(source, 'FA_SITE_BASIC_AUTH_SECRETS', name)
-    ) &&
-    source.includes('.fa') &&
-    source.includes('site-basic-auth.htpasswd') &&
-    source.includes('site-basic-auth.curl-header') &&
-    source.includes('install -m 644') &&
-    source.includes('install -m 600')
-  );
 }
 
 /**
@@ -2792,12 +2770,14 @@ function hasLocalOriginHealthChecks(source) {
     /\bverify_local_origin_health\b/.test(verifyDeploymentBody) &&
     /\bdeploy_bootstrap_origin_http_only\b/.test(localOriginBody) &&
     localOriginBody.includes('http://127.0.0.1/healthz') &&
+    localOriginBody.includes('http://127.0.0.1/') &&
+    localOriginBody.includes('http://127.0.0.1/index.html') &&
     localOriginBody.includes('http://127.0.0.1/api/chat/health') &&
     localOriginBody.includes('http://127.0.0.1/api/knowledge/health') &&
     localOriginBody.includes('http://127.0.0.1/api/llm-usage/health') &&
     localOriginBody.includes('http://127.0.0.1/api/users/health') &&
     localOriginBody.includes('assert_remote_https_origin_http_200 /healthz') &&
-    localOriginBody.includes('verify_local_origin_homepage_basic_auth')
+    localOriginBody.includes('verify_local_origin_public_entrypoints')
   );
 }
 
@@ -2811,7 +2791,7 @@ function hasHttpsEdgeHealthChecks(source) {
 
   return (
     edgeBody.includes('assert_https_edge_http_200 /healthz') &&
-    edgeBody.includes('verify_https_edge_homepage_basic_auth')
+    edgeBody.includes('verify_https_edge_public_entrypoints')
   );
 }
 
@@ -3596,46 +3576,6 @@ function validateBrowserSafeAuth0SecretScope(root) {
 }
 
 /**
- * @param {string} root
- * @returns {string[]}
- */
-function validateSiteBasicAuthSecretScope(root) {
-  const errors = [];
-  const terraformGcpPath = 'terraform/gcp-data-plane/main.tf';
-  const terraformGcp = readOptionalFile(root, terraformGcpPath);
-
-  if (
-    terraformGcp !== undefined &&
-    !siteBasicAuthSecretNames.every((name) =>
-      terraformLocalListIncludes(terraformGcp, 'runtime_secret_names', name)
-    )
-  ) {
-    errors.push(
-      `${terraformGcpPath} must define FA_SITE_BASIC_AUTH_USER, FA_SITE_BASIC_AUTH_HTPASSWD, and FA_SITE_BASIC_AUTH_CHECK_HEADER as runtime Secret Manager secrets`
-    );
-  }
-
-  /** @type {Array<[string, string]>} */
-  const siteBasicAuthReleaseRenderers = [
-    ['scripts/hetzner/load-secrets.sh', 'scripts/hetzner/load-secrets.sh'],
-    ['scripts/hetzner/provision.sh', 'scripts/hetzner/provision.sh fa-load-secrets wrapper'],
-    [
-      'terraform/hetzner-prod/cloud-init.yaml.tftpl',
-      'terraform/hetzner-prod/cloud-init.yaml.tftpl fa-load-secrets wrapper',
-    ],
-  ];
-
-  for (const [relativePath, label] of siteBasicAuthReleaseRenderers) {
-    const source = readOptionalFile(root, relativePath);
-    if (source !== undefined && !hasSiteBasicAuthReleaseRendering(source)) {
-      errors.push(`${label} must render release-local site Basic Auth files`);
-    }
-  }
-
-  return errors;
-}
-
-/**
  * @param {string} source
  * @param {string} devSecretName
  * @param {string} runtimeEnvName
@@ -3784,14 +3724,12 @@ function validateDeploymentArtifacts(root) {
   const devFaCaddy = readOptionalFile(root, 'scripts/dev-host/caddy/fishing-assistant.Caddyfile');
   if (devFaCaddy !== undefined) {
     if (
-      !/@fa_home\s*\{[\s\S]*?path\s+\/\s+\/index\.html[\s\S]*?\}/.test(devFaCaddy) ||
-      !/basic_auth\s+@fa_home\s*\{[\s\S]*?fa\s+\{\$FA_SITE_BASIC_AUTH_CADDY_HASH\}[\s\S]*?\}/.test(
-        devFaCaddy
-      ) ||
+      /basic_auth\b/.test(devFaCaddy) ||
+      /FA_SITE_BASIC_AUTH/.test(devFaCaddy) ||
       !/handle\s+\/\s*\{[\s\S]*?reverse_proxy\s+localhost:3100/.test(devFaCaddy)
     ) {
       errors.push(
-        'scripts/dev-host/caddy/fishing-assistant.Caddyfile must protect / and /index.html with Basic Auth while keeping app/API routes public'
+        'scripts/dev-host/caddy/fishing-assistant.Caddyfile must serve the public homepage without an edge auth gate'
       );
     }
 
@@ -3889,7 +3827,6 @@ function validateStaticRepository(root = repoRoot) {
     ...validateObservabilityDeploymentArtifacts(root),
     ...validateCloudflareDnsTokenScope(root),
     ...validateBrowserSafeAuth0SecretScope(root),
-    ...validateSiteBasicAuthSecretScope(root),
     ...validateProviderSecretSourceScope(root),
     ...validateCredentialBlastRadius(root),
   ];

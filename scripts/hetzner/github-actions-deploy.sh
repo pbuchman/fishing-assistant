@@ -21,7 +21,6 @@ deploy_nginx="${FA_DEPLOY_NGINX:-false}"
 deploy_bootstrap_origin_http_only=false
 deploy_sha="${FA_DEPLOY_SHA:-}"
 loaded_prod_env_file="/etc/fa/.env.prod"
-site_basic_auth_header=""
 deployment_check_timeout_seconds=90
 deployment_check_interval_seconds=3
 key_file=""
@@ -358,12 +357,6 @@ deploy_remote_release() {
   run_remote "sudo -n /usr/local/sbin/fa-install-observability ${quoted_current_dir} ${quoted_sha} --with-alert-router"
 }
 
-load_site_basic_auth_header() {
-  site_basic_auth_header="$(run_remote_capture "cat /opt/fishing-assistant/current/.fa/site-basic-auth.curl-header")"
-  [[ "${site_basic_auth_header}" == Authorization:\ Basic\ * ]] ||
-    fail "Rendered site Basic Auth verification header is missing or invalid"
-}
-
 wait_for_remote_http_status() {
   local url="$1"
   local expected_status="$2"
@@ -477,10 +470,8 @@ verify_observability_health() {
 verify_local_origin_health() {
   if [[ "${deploy_bootstrap_origin_http_only}" == "true" ]]; then
     assert_remote_http_200 http://127.0.0.1/healthz
-    assert_remote_http_status http://127.0.0.1/ 401
-    assert_remote_http_status http://127.0.0.1/index.html 401
-    assert_remote_http_200 http://127.0.0.1/ "${site_basic_auth_header}"
-    assert_remote_http_200 http://127.0.0.1/index.html "${site_basic_auth_header}"
+    assert_remote_http_200 http://127.0.0.1/
+    assert_remote_http_200 http://127.0.0.1/index.html
     assert_remote_http_200 http://127.0.0.1/app
     assert_remote_http_200 http://127.0.0.1/api/chat/health
     assert_remote_http_200 http://127.0.0.1/api/knowledge/health
@@ -488,15 +479,13 @@ verify_local_origin_health() {
     assert_remote_http_200 http://127.0.0.1/api/users/health
   else
     assert_remote_https_origin_http_200 /healthz
-    verify_local_origin_homepage_basic_auth
+    verify_local_origin_public_entrypoints
   fi
 }
 
-verify_local_origin_homepage_basic_auth() {
-  assert_remote_https_origin_http_status / 401
-  assert_remote_https_origin_http_status /index.html 401
-  assert_remote_https_origin_http_200 / "${site_basic_auth_header}"
-  assert_remote_https_origin_http_200 /index.html "${site_basic_auth_header}"
+verify_local_origin_public_entrypoints() {
+  assert_remote_https_origin_http_200 /
+  assert_remote_https_origin_http_200 /index.html
   assert_remote_https_origin_http_200 /app
   assert_remote_https_origin_http_200 /api/chat/health
   assert_remote_https_origin_http_200 /api/knowledge/health
@@ -504,11 +493,9 @@ verify_local_origin_homepage_basic_auth() {
   assert_remote_https_origin_http_200 /api/users/health
 }
 
-verify_https_edge_homepage_basic_auth() {
-  assert_https_edge_http_status / 401
-  assert_https_edge_http_status /index.html 401
-  assert_https_edge_http_200 / "${site_basic_auth_header}"
-  assert_https_edge_http_200 /index.html "${site_basic_auth_header}"
+verify_https_edge_public_entrypoints() {
+  assert_https_edge_http_200 /
+  assert_https_edge_http_200 /index.html
   assert_https_edge_http_200 /app
   assert_https_edge_http_200 /api/chat/health
   assert_https_edge_http_200 /api/knowledge/health
@@ -518,13 +505,12 @@ verify_https_edge_homepage_basic_auth() {
 
 verify_https_edge_health() {
   assert_https_edge_http_200 /healthz
-  verify_https_edge_homepage_basic_auth
+  verify_https_edge_public_entrypoints
 }
 
 verify_deployment() {
   verify_service_health
   verify_observability_health
-  load_site_basic_auth_header
   verify_local_origin_health
 
   if [[ "${deploy_bootstrap_origin_http_only}" == "true" ]]; then

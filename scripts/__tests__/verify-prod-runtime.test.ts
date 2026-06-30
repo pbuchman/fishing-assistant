@@ -51,17 +51,13 @@ server {
   server_name fishing-assistant.online;
   root /var/www/fa/current;
   location = / {
-    auth_basic "Fishing Assistant";
-    auth_basic_user_file /etc/nginx/fa-site-basic-auth.htpasswd;
     try_files /index.html =404;
   }
   location = /index.html {
-    auth_basic "Fishing Assistant";
-    auth_basic_user_file /etc/nginx/fa-site-basic-auth.htpasswd;
     try_files /index.html =404;
   }
-  location = /app { auth_basic off; try_files /index.html =404; }
-  location /app/ { auth_basic off; try_files /index.html =404; }
+  location = /app { try_files /index.html =404; }
+  location /app/ { try_files /index.html =404; }
   location = /healthz { return 200 "ok\\n"; }
   location ~ ^/api/[a-z0-9-]+/internal(?:/|$) { return 404; }
   location = /api/chat { proxy_pass http://fa_chat_service/; }
@@ -72,7 +68,7 @@ server {
   location /api/llm-usage/ { proxy_pass http://fa_llm_usage_service/; }
   location = /api/users { proxy_pass http://fa_user_service/; }
   location /api/users/ { proxy_pass http://fa_user_service/; }
-  location = /alerts/grafana { auth_basic off; proxy_pass http://127.0.0.1:9002; }
+  location = /alerts/grafana { proxy_pass http://127.0.0.1:9002; }
   location = /share { return 301 /share/; }
   location /share/ {
     proxy_ssl_server_name on;
@@ -115,10 +111,6 @@ FA_AUTH0_CLIENT_ID="\${FA_AUTH0_CLIENT_ID:-}"
 FA_AUTH0_AUDIENCE="\${FA_AUTH0_AUDIENCE:-}"
 deploy_nginx="\${FA_DEPLOY_NGINX:-false}"
 deploy_bootstrap_origin_http_only=false
-site_basic_auth_header=""
-load_site_basic_auth_header() {
-  site_basic_auth_header="$(run_remote_capture "cat /opt/fishing-assistant/current/.fa/site-basic-auth.curl-header")"
-}
 validate_inputs() {
   [[ -n "\${FA_AUTH0_DOMAIN}" ]] || fail "FA_AUTH0_DOMAIN is required"
   [[ -n "\${FA_AUTH0_CLIENT_ID}" ]] || fail "FA_AUTH0_CLIENT_ID is required"
@@ -168,10 +160,8 @@ verify_service_health() {
 verify_local_origin_health() {
   if [[ "\${deploy_bootstrap_origin_http_only}" == "true" ]]; then
     assert_remote_http_200 http://127.0.0.1/healthz
-    assert_remote_http_status http://127.0.0.1/ 401
-    assert_remote_http_status http://127.0.0.1/index.html 401
-    assert_remote_http_200 http://127.0.0.1/ "\${site_basic_auth_header}"
-    assert_remote_http_200 http://127.0.0.1/index.html "\${site_basic_auth_header}"
+    assert_remote_http_200 http://127.0.0.1/
+    assert_remote_http_200 http://127.0.0.1/index.html
     assert_remote_http_200 http://127.0.0.1/app
     assert_remote_http_200 http://127.0.0.1/api/chat/health
     assert_remote_http_200 http://127.0.0.1/api/knowledge/health
@@ -179,25 +169,21 @@ verify_local_origin_health() {
     assert_remote_http_200 http://127.0.0.1/api/users/health
   else
     assert_remote_https_origin_http_200 /healthz
-    verify_local_origin_homepage_basic_auth
+    verify_local_origin_public_entrypoints
   fi
 }
-verify_local_origin_homepage_basic_auth() {
-  assert_remote_https_origin_http_status / 401
-  assert_remote_https_origin_http_status /index.html 401
-  assert_remote_https_origin_http_200 / "\${site_basic_auth_header}"
-  assert_remote_https_origin_http_200 /index.html "\${site_basic_auth_header}"
+verify_local_origin_public_entrypoints() {
+  assert_remote_https_origin_http_200 /
+  assert_remote_https_origin_http_200 /index.html
   assert_remote_https_origin_http_200 /app
   assert_remote_https_origin_http_200 /api/chat/health
   assert_remote_https_origin_http_200 /api/knowledge/health
   assert_remote_https_origin_http_200 /api/llm-usage/health
   assert_remote_https_origin_http_200 /api/users/health
 }
-verify_https_edge_homepage_basic_auth() {
-  assert_https_edge_http_status / 401
-  assert_https_edge_http_status /index.html 401
-  assert_https_edge_http_200 / "\${site_basic_auth_header}"
-  assert_https_edge_http_200 /index.html "\${site_basic_auth_header}"
+verify_https_edge_public_entrypoints() {
+  assert_https_edge_http_200 /
+  assert_https_edge_http_200 /index.html
   assert_https_edge_http_200 /app
   assert_https_edge_http_200 /api/chat/health
   assert_https_edge_http_200 /api/knowledge/health
@@ -206,12 +192,11 @@ verify_https_edge_homepage_basic_auth() {
 }
 verify_https_edge_health() {
   assert_https_edge_http_200 /healthz
-  verify_https_edge_homepage_basic_auth
+  verify_https_edge_public_entrypoints
 }
 verify_deployment() {
   verify_service_health
   verify_observability_health
-  load_site_basic_auth_header
   verify_local_origin_health
   if [[ "\${deploy_bootstrap_origin_http_only}" == "true" ]]; then
     printf 'Skipped HTTPS edge health checks because --bootstrap-origin-http-only was set\\n'
@@ -229,10 +214,6 @@ verify_observability_health() {
 const validNginxDeployScript = `
 NGINX_SOURCE="\${SCRIPT_DIR}/nginx/fishing-assistant.conf"
 ORIGIN_HTTP_SOURCE="\${SCRIPT_DIR}/nginx/fishing-assistant.origin-http.conf"
-install_site_basic_auth_file() {
-  local release_dir="$1"
-  install -m 640 -o root -g www-data "\${release_dir}/.fa/site-basic-auth.htpasswd" /etc/nginx/fa-site-basic-auth.htpasswd
-}
 parse_args() {
   case "$1" in
     --origin-http-only)
@@ -241,7 +222,6 @@ parse_args() {
   esac
 }
 main() {
-  install_site_basic_auth_file "\${release_dir}"
   rm -f /etc/nginx/sites-enabled/default
   nginx -t
 }
@@ -302,25 +282,22 @@ describe('production runtime verifier', () => {
     expect(validateNginxRouting(validNginx, manifest)).toEqual([]);
   });
 
-  it('rejects nginx routing that omits homepage Basic Auth or app exemption', () => {
+  it('rejects nginx routing that reintroduces Basic Auth directives', () => {
     const errors = validateNginxRouting(
       validNginx
         .replace(
-          '    auth_basic "Fishing Assistant";\n    auth_basic_user_file /etc/nginx/fa-site-basic-auth.htpasswd;\n    try_files /index.html =404;',
-          '    try_files /index.html =404;'
+          '  location = / {\n    try_files /index.html =404;\n  }',
+          '  location = / {\n    auth_basic "Fishing Assistant";\n    try_files /index.html =404;\n  }'
         )
         .replace(
-          'location = /app { auth_basic off; try_files /index.html =404; }',
-          'location = /app { try_files /index.html =404; }'
+          'location = /app { try_files /index.html =404; }',
+          'location = /app { auth_basic off; try_files /index.html =404; }'
         ),
       manifest
     );
 
     expect(errors).toEqual(
-      expect.arrayContaining([
-        'nginx config must protect / and /index.html with site Basic Auth',
-        'nginx config must explicitly exempt /app from Basic Auth',
-      ])
+      expect.arrayContaining(['nginx config must not include Basic Auth directives'])
     );
   });
 
@@ -356,10 +333,7 @@ describe('production runtime verifier', () => {
   it('rejects nginx routing that misses or broadens the Grafana alert webhook path', () => {
     const errors = validateNginxRouting(
       validNginx
-        .replace(
-          'location = /alerts/grafana { auth_basic off; proxy_pass http://127.0.0.1:9002; }',
-          ''
-        )
+        .replace('location = /alerts/grafana { proxy_pass http://127.0.0.1:9002; }', '')
         .replace(
           'location / { try_files $uri $uri/ /index.html; }',
           'location ^~ /alerts/ { proxy_pass http://127.0.0.1:9002; }\n  location / { try_files $uri $uri/ /index.html; }'
@@ -379,8 +353,8 @@ describe('production runtime verifier', () => {
     const errors = validateNginxRouting(
       validNginx
         .replace(
-          'location = /alerts/grafana { auth_basic off; proxy_pass http://127.0.0.1:9002; }',
-          'location = /alerts/grafana { auth_basic off; proxy_pass_request_headers off; proxy_pass http://127.0.0.1:9002; }'
+          'location = /alerts/grafana { proxy_pass http://127.0.0.1:9002; }',
+          'location = /alerts/grafana { proxy_pass_request_headers off; proxy_pass http://127.0.0.1:9002; }'
         )
         .replace(
           'server_name fishing-assistant.online;',
@@ -573,16 +547,16 @@ install_service_account_keys
     );
   });
 
-  it('rejects GitHub deploy runtime that omits homepage Basic Auth verification', () => {
+  it('rejects GitHub deploy runtime that omits public homepage verification', () => {
     const errors = validateGithubActionsDeployRuntime(
       validGithubActionsDeployScript
-        .replaceAll('verify_local_origin_homepage_basic_auth', 'verify_local_origin_health_only')
-        .replaceAll('verify_https_edge_homepage_basic_auth', 'verify_https_edge_health_only'),
+        .replaceAll('verify_local_origin_public_entrypoints', 'verify_local_origin_health_only')
+        .replaceAll('verify_https_edge_public_entrypoints', 'verify_https_edge_health_only'),
       manifest
     );
 
     expect(errors).toContain(
-      'scripts/hetzner/github-actions-deploy.sh must verify homepage Basic Auth on local-origin and HTTPS edge routes'
+      'scripts/hetzner/github-actions-deploy.sh must verify public homepage entrypoints on local-origin and HTTPS edge routes'
     );
   });
 
@@ -671,18 +645,13 @@ install_service_account_keys
     );
   });
 
-  it('rejects nginx deploy runtime that does not install the Basic Auth file for nginx', () => {
+  it('rejects nginx deploy runtime that reintroduces Basic Auth files', () => {
     const errors = validateNginxDeployRuntime(
-      validNginxDeployScript
-        .replace(
-          'install -m 640 -o root -g www-data "${release_dir}/.fa/site-basic-auth.htpasswd" /etc/nginx/fa-site-basic-auth.htpasswd',
-          'true'
-        )
-        .replace('install_site_basic_auth_file "${release_dir}"', 'true')
+      `${validNginxDeployScript}\nauth_basic "Fishing Assistant";\ninstall /tmp/site-basic-auth /etc/nginx/fa-site-basic-auth.htpasswd\n`
     );
 
     expect(errors).toContain(
-      'scripts/hetzner/deploy-nginx.sh must install the release Basic Auth file to /etc/nginx/fa-site-basic-auth.htpasswd for nginx worker access'
+      'scripts/hetzner/deploy-nginx.sh must not install or configure Basic Auth'
     );
   });
 

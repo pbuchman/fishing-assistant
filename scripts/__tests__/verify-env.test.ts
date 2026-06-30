@@ -27,10 +27,6 @@ FA_LLM_USAGE_SERVICE_INTERNAL_URL=http://127.0.0.1:3203
 FA_USER_SERVICE_INTERNAL_URL=http://127.0.0.1:3204
 FA_INTERNAL_AUTH_TOKEN=replace-with-local-generated-token
 FA_INTERNAL_AUTH_TOKEN_PREVIOUS=
-FA_SITE_BASIC_AUTH_USER=fa
-FA_SITE_BASIC_AUTH_HTPASSWD=replace-with-secret-manager-htpasswd-line
-FA_SITE_BASIC_AUTH_CADDY_HASH=replace-with-dev-caddy-password-hash
-FA_SITE_BASIC_AUTH_CHECK_HEADER=replace-with-secret-manager-authorization-header
 FA_AUTH0_DOMAIN=replace-with-auth0-domain
 FA_AUTH0_CLIENT_ID=replace-with-auth0-spa-client-id
 FA_AUTH0_AUDIENCE=replace-with-auth0-api-audience
@@ -129,10 +125,6 @@ describe('env verifier', () => {
       expect(source).toContain('FA_USER_SERVICE_URL=/api/users');
       expect(source).toContain('FA_USER_SERVICE_INTERNAL_URL=http://127.0.0.1:3204');
       expect(source).toContain('FA_INTERNAL_AUTH_TOKEN_PREVIOUS=');
-      expect(source).toContain('FA_SITE_BASIC_AUTH_USER=');
-      expect(source).toContain('FA_SITE_BASIC_AUTH_HTPASSWD=');
-      expect(source).toContain('FA_SITE_BASIC_AUTH_CADDY_HASH=');
-      expect(source).toContain('FA_SITE_BASIC_AUTH_CHECK_HEADER=');
     }
   });
 
@@ -213,10 +205,6 @@ describe('env verifier', () => {
             'FA_INTERNAL_AUTH_TOKEN',
             'FA_INTERNAL_AUTH_TOKEN_PREVIOUS',
             'FA_OPENAI_APP_API_KEY',
-            'FA_SITE_BASIC_AUTH_USER',
-            'FA_SITE_BASIC_AUTH_HTPASSWD',
-            'FA_SITE_BASIC_AUTH_CADDY_HASH',
-            'FA_SITE_BASIC_AUTH_CHECK_HEADER',
           ],
           trackedFiles: ['.env.dev.local', 'keys/runtime-key.json'],
         })
@@ -229,10 +217,6 @@ describe('env verifier', () => {
           'Browser-safe env must not expose FA_BOOTSTRAP_ADMIN_EMAILS',
           'Browser-safe env must not expose FA_USER_SERVICE_INTERNAL_URL',
           'Browser-safe env must not expose FA_OPENAI_APP_API_KEY',
-          'Browser-safe env must not expose FA_SITE_BASIC_AUTH_USER',
-          'Browser-safe env must not expose FA_SITE_BASIC_AUTH_HTPASSWD',
-          'Browser-safe env must not expose FA_SITE_BASIC_AUTH_CADDY_HASH',
-          'Browser-safe env must not expose FA_SITE_BASIC_AUTH_CHECK_HEADER',
           'Tracked local secret file is forbidden: .env.dev.local',
           'Tracked local secret file is forbidden: keys/runtime-key.json',
         ])
