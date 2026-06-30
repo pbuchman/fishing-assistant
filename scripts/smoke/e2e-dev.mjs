@@ -3,17 +3,6 @@
 
 const origin =
   process.env['FA_DEV_ORIGIN'] ?? process.env['FA_PUBLIC_ORIGIN'] ?? 'http://127.0.0.1:3100';
-const siteBasicAuthHeader = process.env['FA_SITE_BASIC_AUTH_CHECK_HEADER'] ?? '';
-
-function siteBasicAuthHeaders() {
-  if (!siteBasicAuthHeader.startsWith('Authorization: Basic ')) {
-    throw new Error('FA_SITE_BASIC_AUTH_CHECK_HEADER must be set to "Authorization: Basic ..."');
-  }
-
-  return {
-    Authorization: siteBasicAuthHeader.slice('Authorization: '.length),
-  };
-}
 
 /**
  * @param {string} path
@@ -23,19 +12,6 @@ function siteBasicAuthHeaders() {
 async function request(path, options = {}) {
   const headers = options.headers ?? {};
   return fetch(new URL(path, origin), Object.keys(headers).length === 0 ? undefined : { headers });
-}
-
-/**
- * @param {string} label
- * @param {string} path
- * @param {number} expectedStatus
- * @param {{ headers?: Record<string, string> }} [options]
- */
-async function expectStatus(label, path, expectedStatus, options = {}) {
-  const response = await request(path, options);
-  if (response.status !== expectedStatus) {
-    throw new Error(`${label} failed: expected ${expectedStatus}, got ${response.status}`);
-  }
 }
 
 /**
@@ -73,13 +49,9 @@ async function expectNoViteDevelopmentSource() {
 }
 
 async function main() {
-  const authHeaders = siteBasicAuthHeaders();
-
   await expectOk('edge health', '/healthz');
-  await expectStatus('homepage without Basic Auth', '/', 401);
-  await expectStatus('index without Basic Auth', '/index.html', 401);
-  await expectOk('homepage with Basic Auth', '/', { headers: authHeaders });
-  await expectOk('index with Basic Auth', '/index.html', { headers: authHeaders });
+  await expectOk('homepage', '/');
+  await expectOk('index', '/index.html');
   await expectOk('app entrypoint', '/app');
   await expectNoViteDevelopmentSource();
   await expectOk('chat health', '/api/chat/health');

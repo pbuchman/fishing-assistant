@@ -4,14 +4,11 @@ set -euo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 FA_ENVIRONMENT="${FA_ENVIRONMENT:-}"
 NGINX_SOURCE="${SCRIPT_DIR}/nginx/fishing-assistant.conf"
 ORIGIN_HTTP_SOURCE="${SCRIPT_DIR}/nginx/fishing-assistant.origin-http.conf"
 site_target="/etc/nginx/sites-available/fishing-assistant.conf"
 site_enabled="/etc/nginx/sites-enabled/fishing-assistant.conf"
-site_basic_auth_source="${repo_root}/.fa/site-basic-auth.htpasswd"
-site_basic_auth_target="/etc/nginx/fa-site-basic-auth.htpasswd"
 RELOAD_NGINX=1
 NGINX_MODE="https"
 
@@ -67,14 +64,6 @@ reload_nginx() {
   fi
 }
 
-install_site_basic_auth_file() {
-  [[ -r "${site_basic_auth_source}" ]] ||
-    fail "Missing site Basic Auth file: ${site_basic_auth_source}"
-
-  install -d -m 755 "$(dirname "${site_basic_auth_target}")"
-  install -m 640 -o root -g www-data "${site_basic_auth_source}" "${site_basic_auth_target}"
-}
-
 main() {
   parse_args "$@"
   require_prod
@@ -82,7 +71,6 @@ main() {
   command -v nginx >/dev/null 2>&1 || fail "nginx is required"
   [[ -r "${NGINX_SOURCE}" ]] || fail "Missing nginx config source: ${NGINX_SOURCE}"
 
-  install_site_basic_auth_file
   install -d -m 755 "$(dirname "${site_target}")" "$(dirname "${site_enabled}")"
   install -m 644 -o root -g root "${NGINX_SOURCE}" "${site_target}"
   ln -sfn "${site_target}" "${site_enabled}"

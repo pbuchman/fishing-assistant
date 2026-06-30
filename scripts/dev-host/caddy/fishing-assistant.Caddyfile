@@ -6,14 +6,6 @@ handle /alerts/grafana {
     reverse_proxy 127.0.0.1:9002
 }
 
-@fa_home {
-    path / /index.html
-}
-
-basic_auth @fa_home {
-    fa {$FA_SITE_BASIC_AUTH_CADDY_HASH}
-}
-
 handle / {
     reverse_proxy localhost:3100
 }

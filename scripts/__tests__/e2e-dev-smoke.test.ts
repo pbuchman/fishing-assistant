@@ -5,8 +5,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const repoRoot = path.resolve(__dirname, '../..');
 const smokeScript = path.join(repoRoot, 'scripts/smoke/e2e-dev.mjs');
-const siteBasicAuthValue = 'Basic smoke-secret';
-const siteBasicAuthCheckHeader = `Authorization: ${siteBasicAuthValue}`;
 
 let server: ReturnType<typeof createServer> | undefined;
 
@@ -61,12 +59,6 @@ async function startFakeEdge(options: { exposeViteDevSource?: boolean } = {}) {
     }
 
     if (pathname === '/' || pathname === '/index.html') {
-      if (auth !== siteBasicAuthValue) {
-        response.setHeader('WWW-Authenticate', 'Basic realm="Fishing Assistant"');
-        send(response, 401);
-        return;
-      }
-
       send(
         response,
         200,
@@ -134,7 +126,6 @@ function runSmoke(origin: string, envOverrides: Record<string, string | undefine
         env: {
           ...process.env,
           FA_DEV_ORIGIN: origin,
-          FA_SITE_BASIC_AUTH_CHECK_HEADER: siteBasicAuthCheckHeader,
           ...envOverrides,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -171,16 +162,16 @@ afterEach(async () => {
 });
 
 describe('DEV e2e smoke script', () => {
-  it('checks homepage Basic Auth gate and public app/API routes', async () => {
+  it('checks public homepage, app, and API routes', async () => {
     const { origin, seenAuthByPath } = await startFakeEdge();
 
     const result = await runSmoke(origin);
 
     expect(result.status).toBe(0);
     expect(seenAuthByPath.get('/healthz')).toBeUndefined();
-    expect(seenAuthByPath.get('/')).toBe(siteBasicAuthValue);
-    expect(seenAuthByPath.get('/index.html')).toBe(siteBasicAuthValue);
     for (const pathname of [
+      '/',
+      '/index.html',
       '/app',
       '/src/config.ts',
       '/@vite/client',
@@ -192,15 +183,6 @@ describe('DEV e2e smoke script', () => {
     ]) {
       expect(seenAuthByPath.get(pathname)).toBeUndefined();
     }
-  });
-
-  it('fails when the Basic Auth check header is missing', async () => {
-    const { origin } = await startFakeEdge();
-
-    const result = await runSmoke(origin, { FA_SITE_BASIC_AUTH_CHECK_HEADER: '' });
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('FA_SITE_BASIC_AUTH_CHECK_HEADER');
   });
 
   it('fails when the public DEV edge serves Vite development source', async () => {

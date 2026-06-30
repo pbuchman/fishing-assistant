@@ -56,7 +56,6 @@ describe('legalDocuments', () => {
       expect(text).not.toMatch(/wersja robocza/i);
       expect(text).not.toMatch(/przed publicznym uruchomieniem/i);
       expect(text).not.toMatch(/darmowych generator/i);
-      expect(text).not.toMatch(/Basic Auth/i);
       expect(text).not.toMatch(/launch/i);
     }
   });

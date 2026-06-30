@@ -30,9 +30,6 @@ Runtime Secret Manager entries:
 
 - `FA_INTERNAL_AUTH_TOKEN`
 - `FA_INTERNAL_AUTH_TOKEN_PREVIOUS`
-- `FA_SITE_BASIC_AUTH_USER`
-- `FA_SITE_BASIC_AUTH_HTPASSWD`
-- `FA_SITE_BASIC_AUTH_CHECK_HEADER`
 - `FA_DEV_OPENROUTER_APP_API_KEY`
 - `FA_DEV_MINIMAX_APP_API_KEY`
 - `FA_OPENROUTER_APP_API_KEY` (retired shared secret retained for rollback)
@@ -57,61 +54,11 @@ Provisioning-only Secret Manager entry:
 fetches it directly with the provisioner key and writes only the root-owned
 certbot credentials file.
 
-## Temporary Homepage Basic Auth Gate
+## Public Homepage
 
-The DEV and PROD homepage entry routes `/` and `/index.html` are temporarily
-protected by the retained site Basic Auth password. This intentionally breaks
-social preview crawlers while the temporary launch gate is active. `/app`
-remains protected by Auth0 inside the product UI, and `/api/*/internal/*`
-remains blocked at the edge.
-
-The following Basic Auth secret surfaces are active again for the homepage gate.
-Reuse the existing values when restoring or redeploying the gate. Do not rotate
-the password unless the product owner explicitly asks for rotation. Keep
-generated hashes and authorization headers out of git:
-
-- `FA_SITE_BASIC_AUTH_USER`: Basic Auth username, currently `fa`.
-- `FA_SITE_BASIC_AUTH_CADDY_HASH`: DEV-only Caddy bcrypt hash.
-- `FA_SITE_BASIC_AUTH_HTPASSWD`: PROD nginx htpasswd line.
-- `FA_SITE_BASIC_AUTH_CHECK_HEADER`: deploy/smoke `Authorization` header.
-
-Generate DEV values on `dev-host`:
-
-```bash
-read -rsp "Site Basic Auth password: " FA_SITE_BASIC_AUTH_PASSWORD
-printf '\n'
-FA_SITE_BASIC_AUTH_USER=fa
-FA_SITE_BASIC_AUTH_CADDY_HASH="$(printf '%s' "$FA_SITE_BASIC_AUTH_PASSWORD" | caddy hash-password --algorithm bcrypt)"
-FA_SITE_BASIC_AUTH_TOKEN="$(printf '%s:%s' "$FA_SITE_BASIC_AUTH_USER" "$FA_SITE_BASIC_AUTH_PASSWORD" | base64 -w0)"
-printf "FA_SITE_BASIC_AUTH_CHECK_HEADER='Authorization: Basic %s'\n" "$FA_SITE_BASIC_AUTH_TOKEN"
-unset FA_SITE_BASIC_AUTH_PASSWORD FA_SITE_BASIC_AUTH_TOKEN
-```
-
-Merge `scripts/dev-host/caddy/fishing-assistant.Caddyfile` into the
-host-level FA Caddy site, then validate and reload Caddy. The checked-in DEV
-snippet must protect only `/` and `/index.html` with `FA_SITE_BASIC_AUTH_CADDY_HASH`.
-
-Generate PROD Secret Manager versions from a trusted shell:
-
-```bash
-read -rsp "Site Basic Auth password: " FA_SITE_BASIC_AUTH_PASSWORD
-printf '\n'
-FA_SITE_BASIC_AUTH_USER=fa
-FA_SITE_BASIC_AUTH_HTPASSWD="$(printf '%s' "$FA_SITE_BASIC_AUTH_PASSWORD" | openssl passwd -apr1 -stdin)"
-FA_SITE_BASIC_AUTH_TOKEN="$(printf '%s:%s' "$FA_SITE_BASIC_AUTH_USER" "$FA_SITE_BASIC_AUTH_PASSWORD" | base64 -w0)"
-
-printf '%s' "$FA_SITE_BASIC_AUTH_USER" | gcloud --account="$FA_GCP_ADMIN_SERVICE_ACCOUNT" --project="$FA_GCP_PROJECT_ID" secrets versions add FA_SITE_BASIC_AUTH_USER --data-file=-
-printf '%s:%s\n' "$FA_SITE_BASIC_AUTH_USER" "$FA_SITE_BASIC_AUTH_HTPASSWD" | gcloud --account="$FA_GCP_ADMIN_SERVICE_ACCOUNT" --project="$FA_GCP_PROJECT_ID" secrets versions add FA_SITE_BASIC_AUTH_HTPASSWD --data-file=-
-printf 'Authorization: Basic %s\n' "$FA_SITE_BASIC_AUTH_TOKEN" | gcloud --account="$FA_GCP_ADMIN_SERVICE_ACCOUNT" --project="$FA_GCP_PROJECT_ID" secrets versions add FA_SITE_BASIC_AUTH_CHECK_HEADER --data-file=-
-
-unset FA_SITE_BASIC_AUTH_PASSWORD FA_SITE_BASIC_AUTH_HTPASSWD FA_SITE_BASIC_AUTH_TOKEN
-```
-
-Unauthenticated requests to `/` and `/index.html` must return `401` with
-`WWW-Authenticate`. Authenticated requests using `FA_SITE_BASIC_AUTH_CHECK_HEADER`
-must return `200`. `/app`, `/assets/*`, `/api/*`, `/share/*`, `/healthz`, DEV
-`/webhook`, and `/alerts/grafana` stay outside the Basic Auth gate so Auth0 and
-bearer-token API traffic are not blocked.
+DEV and PROD homepage entry routes `/` and `/index.html` are public and must
+return `200` without an extra edge password. `/app` remains protected by Auth0
+inside the product UI, and `/api/*/internal/*` remains blocked at the edge.
 
 ## Production Credential Matrix
 
@@ -202,8 +149,7 @@ scripts/deploy/deploy-dev.sh --branch "$branch" --sha "$sha"
 DEV edge routing uses a host-level FA Caddy site that lives outside this
 product repository. Copy or merge
 `scripts/dev-host/caddy/fishing-assistant.Caddyfile` into that
-host-level FA Caddy site so `/` and `/index.html` use the retained Basic Auth
-hash. Copy or merge
+host-level FA Caddy site. Copy or merge
 `scripts/dev-host/caddy/fishing-assistant-observability.Caddyfile`
 before the frontend fallback so `/healthz` returns `ok` at the edge and
 `/alerts/grafana` proxies to the local alert-router on `127.0.0.1:9002`.
@@ -222,10 +168,8 @@ Docker images, and builder cache before `docker build` while the current
 so the deploy path frees failed-build and older release debris without removing
 the active rollback image.
 
-Normal production deploys require unauthenticated HTTP `401` from HTTPS
-static-IP `/` and `/index.html`, authenticated HTTP `200` from those routes
-with `FA_SITE_BASIC_AUTH_CHECK_HEADER`, and unauthenticated HTTP `200` from
-`/healthz`, `/app`, and public `/api/*/health`.
+Normal production deploys require unauthenticated HTTP `200` from HTTPS
+static-IP `/`, `/index.html`, `/healthz`, `/app`, and public `/api/*/health`.
 `deploy_nginx=false`. The `deploy_nginx` input only publishes and reloads nginx
 config.
 
@@ -270,8 +214,8 @@ deploys and verify the HTTP origin directly:
 
 ```bash
 curl --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/healthz
-curl -o /dev/null -w '%{http_code}' --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/
-curl --fail -H "$FA_SITE_BASIC_AUTH_CHECK_HEADER" --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/
+curl --fail --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/
+curl --fail --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/index.html
 curl -o /dev/null -w '%{http_code}' --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/api/chat/health
 ```
 
@@ -279,8 +223,8 @@ Keep the production A record DNS-only until direct-origin HTTPS checks pass:
 
 ```bash
 curl --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/healthz
-curl -o /dev/null -w '%{http_code}' --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/
-curl --fail -H "$FA_SITE_BASIC_AUTH_CHECK_HEADER" --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/
+curl --fail --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/
+curl --fail --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/index.html
 curl -o /dev/null -w '%{http_code}' --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/api/chat/health
 ```
 
@@ -293,10 +237,8 @@ DEV:
 
 ```bash
 curl --fail https://dev.fishing-assistant.online/healthz
-curl -I https://dev.fishing-assistant.online/
-curl -I https://dev.fishing-assistant.online/index.html
-curl --fail -H "$FA_SITE_BASIC_AUTH_CHECK_HEADER" https://dev.fishing-assistant.online/
-curl --fail -H "$FA_SITE_BASIC_AUTH_CHECK_HEADER" https://dev.fishing-assistant.online/index.html
+curl --fail https://dev.fishing-assistant.online/
+curl --fail https://dev.fishing-assistant.online/index.html
 curl --fail https://dev.fishing-assistant.online/app
 curl --fail https://dev.fishing-assistant.online/api/chat/health
 FA_DEV_ORIGIN=https://dev.fishing-assistant.online node scripts/smoke/e2e-dev.mjs
@@ -306,8 +248,8 @@ PROD direct origin:
 
 ```bash
 curl --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/healthz
-curl -o /dev/null -w '%{http_code}' --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/
-curl --fail -H "$FA_SITE_BASIC_AUTH_CHECK_HEADER" --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/
+curl --fail --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/
+curl --fail --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/index.html
 curl --fail --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/app
 curl -o /dev/null -w '%{http_code}' --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/api/chat/health
 curl -o /dev/null -w '%{http_code}' --resolve fishing-assistant.online:80:<hetzner-primary-ip> http://fishing-assistant.online/api/chat/internal/not-public
@@ -317,16 +259,15 @@ PROD direct origin after Cloudflare DNS/TLS:
 
 ```bash
 curl --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/healthz
-curl -o /dev/null -w '%{http_code}' --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/
-curl --fail -H "$FA_SITE_BASIC_AUTH_CHECK_HEADER" --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/
+curl --fail --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/
+curl --fail --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/index.html
 curl --fail --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/app
 curl -o /dev/null -w '%{http_code}' --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/api/chat/health
 curl -o /dev/null -w '%{http_code}' --resolve fishing-assistant.online:443:<hetzner-primary-ip> https://fishing-assistant.online/api/chat/internal/not-public
 ```
 
-Unauthenticated homepage routes `/` and `/index.html` must return `401`.
-Authenticated homepage requests using `FA_SITE_BASIC_AUTH_CHECK_HEADER` must
-return `200`. The public internal route must return `403` or `404`.
+Homepage routes `/` and `/index.html` must return `200` without extra headers.
+The public internal route must return `403` or `404`.
 
 ## Chat Provider Rollout Checks
 

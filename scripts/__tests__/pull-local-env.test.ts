@@ -19,7 +19,6 @@ FA_AUTH0_JWKS_URI=https://replace-with-auth0-domain/.well-known/jwks.json
 FA_BOOTSTRAP_ADMIN_EMAILS=admin@example.com
 FA_SIGNUP_ALLOWED_EMAIL_PATTERN=^[^@\\s]+@example\\.com$
 FA_INTERNAL_AUTH_TOKEN=replace-with-local-generated-token
-FA_SITE_BASIC_AUTH_CHECK_HEADER=replace-with-secret-manager-authorization-header
 FA_OPENROUTER_APP_API_KEY=
 FA_MINIMAX_APP_API_KEY=
 FA_OPENAI_APP_API_KEY=
@@ -49,7 +48,7 @@ describe('local env pull rendering', () => {
 
   it('quotes env values that contain spaces or shell-sensitive characters', () => {
     expect(formatEnvValue('simple-value')).toBe('simple-value');
-    expect(formatEnvValue('Authorization: Basic abc123')).toBe('"Authorization: Basic abc123"');
+    expect(formatEnvValue('value with spaces')).toBe('"value with spaces"');
   });
 
   it('fills local env values from GitHub variables and Secret Manager values', () => {
@@ -65,7 +64,6 @@ describe('local env pull rendering', () => {
         ['FA_AUTH0_JWKS_URI', 'https://fa-dev.example.auth0.com/.well-known/jwks.json'],
         ['FA_BOOTSTRAP_ADMIN_EMAILS', 'operator@fishing-assistant.online'],
         ['FA_INTERNAL_AUTH_TOKEN', 'internal-token'],
-        ['FA_SITE_BASIC_AUTH_CHECK_HEADER', 'Authorization: Basic test'],
         ['FA_DEV_OPENROUTER_APP_API_KEY', 'openrouter-dev-key'],
         ['FA_DEV_MINIMAX_APP_API_KEY', 'minimax-dev-key'],
       ]),
@@ -77,7 +75,6 @@ describe('local env pull rendering', () => {
     expect(rendered).toContain('FA_INTERNAL_AUTH_TOKEN=internal-token');
     expect(rendered).toContain('FA_OPENROUTER_APP_API_KEY=openrouter-dev-key');
     expect(rendered).toContain('FA_MINIMAX_APP_API_KEY=minimax-dev-key');
-    expect(rendered).toContain('FA_SITE_BASIC_AUTH_CHECK_HEADER="Authorization: Basic test"');
     expect(rendered).not.toContain('replace-with-auth0-domain');
     expect(rendered).not.toContain('replace-with-local-generated-token');
   });

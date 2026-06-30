@@ -198,29 +198,15 @@ function validateNginxRouting(source, manifest) {
     errors.push('nginx config must expose /healthz');
   }
 
-  const firstLocationIndex = source.search(/\blocation\s+/);
-  const serverPreamble = firstLocationIndex === -1 ? source : source.slice(0, firstLocationIndex);
-  if (/auth_basic\s+"Fishing Assistant";/.test(serverPreamble)) {
-    errors.push('nginx config must not enable Basic Auth at server scope');
+  if (/auth_basic\b/.test(source) || /auth_basic_user_file\b/.test(source)) {
+    errors.push('nginx config must not include Basic Auth directives');
   }
 
   const homeLocation = locationBlock(source, '= /');
   const indexLocation = locationBlock(source, '= /index.html');
   const homepageLocations = [homeLocation, indexLocation];
-  if (
-    homepageLocations.some(
-      (block) =>
-        !/auth_basic\s+"Fishing Assistant";/.test(block) ||
-        !/auth_basic_user_file\s+\/etc\/nginx\/fa-site-basic-auth\.htpasswd;/.test(block)
-    )
-  ) {
-    errors.push('nginx config must protect / and /index.html with site Basic Auth');
-  }
-
-  const appLocation = locationBlock(source, '= /app');
-  const appPrefixLocation = locationBlock(source, '/app/');
-  if (!/auth_basic\s+off;/.test(appLocation) || !/auth_basic\s+off;/.test(appPrefixLocation)) {
-    errors.push('nginx config must explicitly exempt /app from Basic Auth');
+  if (homepageLocations.some((block) => !/try_files\s+\/index\.html\s+=404;/.test(block))) {
+    errors.push('nginx config must serve public / and /index.html without an auth gate');
   }
 
   const internalBlockIndex = source.search(/location\s+~\s+\^\/api\/\[a-z0-9-\]\+\/internal/);
@@ -496,25 +482,25 @@ function validateGithubActionsDeployRuntime(deployScriptSource, manifest) {
   }
 
   if (
-    !deployScriptSource.includes('verify_local_origin_homepage_basic_auth') ||
-    !deployScriptSource.includes('verify_https_edge_homepage_basic_auth') ||
-    !deployScriptSource.includes('assert_remote_https_origin_http_status / 401') ||
-    !deployScriptSource.includes('assert_remote_https_origin_http_status /index.html 401') ||
-    !deployScriptSource.includes(
-      'assert_remote_https_origin_http_200 / "${site_basic_auth_header}"'
-    ) ||
-    !deployScriptSource.includes(
-      'assert_remote_https_origin_http_200 /index.html "${site_basic_auth_header}"'
-    ) ||
-    !deployScriptSource.includes('assert_https_edge_http_status / 401') ||
-    !deployScriptSource.includes('assert_https_edge_http_status /index.html 401') ||
-    !deployScriptSource.includes('assert_https_edge_http_200 / "${site_basic_auth_header}"') ||
-    !deployScriptSource.includes(
-      'assert_https_edge_http_200 /index.html "${site_basic_auth_header}"'
-    )
+    deployScriptSource.includes('site_basic_auth') ||
+    deployScriptSource.includes('site-basic-auth') ||
+    deployScriptSource.includes('FA_SITE_BASIC_AUTH')
+  ) {
+    errors.push('scripts/hetzner/github-actions-deploy.sh must not depend on homepage Basic Auth');
+  }
+
+  if (
+    !deployScriptSource.includes('verify_local_origin_public_entrypoints') ||
+    !deployScriptSource.includes('verify_https_edge_public_entrypoints') ||
+    !deployScriptSource.includes('assert_remote_http_200 http://127.0.0.1/') ||
+    !deployScriptSource.includes('assert_remote_http_200 http://127.0.0.1/index.html') ||
+    !deployScriptSource.includes('assert_remote_https_origin_http_200 /') ||
+    !deployScriptSource.includes('assert_remote_https_origin_http_200 /index.html') ||
+    !deployScriptSource.includes('assert_https_edge_http_200 /') ||
+    !deployScriptSource.includes('assert_https_edge_http_200 /index.html')
   ) {
     errors.push(
-      'scripts/hetzner/github-actions-deploy.sh must verify homepage Basic Auth on local-origin and HTTPS edge routes'
+      'scripts/hetzner/github-actions-deploy.sh must verify public homepage entrypoints on local-origin and HTTPS edge routes'
     );
   }
 
@@ -671,14 +657,8 @@ function validateNginxDeployRuntime(deployScriptSource) {
     errors.push('scripts/hetzner/deploy-nginx.sh must remove the default nginx site');
   }
 
-  if (
-    !deployScriptSource.includes('/etc/nginx/fa-site-basic-auth.htpasswd') ||
-    !deployScriptSource.includes('.fa/site-basic-auth.htpasswd') ||
-    !deployScriptSource.includes('-g www-data')
-  ) {
-    errors.push(
-      'scripts/hetzner/deploy-nginx.sh must install the release Basic Auth file to /etc/nginx/fa-site-basic-auth.htpasswd for nginx worker access'
-    );
+  if (deployScriptSource.includes('site-basic-auth') || deployScriptSource.includes('auth_basic')) {
+    errors.push('scripts/hetzner/deploy-nginx.sh must not install or configure Basic Auth');
   }
 
   return errors;

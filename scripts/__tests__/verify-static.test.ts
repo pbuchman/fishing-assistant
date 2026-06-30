@@ -168,25 +168,21 @@ const githubActionsDeployWithPinnedHostTrust = [
   '    assert_remote_http_200 http://127.0.0.1/api/users/health',
   '  else',
   '    assert_remote_https_origin_http_200 /healthz',
-  '    verify_local_origin_homepage_basic_auth',
+  '    verify_local_origin_public_entrypoints',
   '  fi',
   '}',
-  'verify_local_origin_homepage_basic_auth() {',
-  '  assert_remote_https_origin_http_status / 401',
-  '  assert_remote_https_origin_http_status /index.html 401',
-  '  assert_remote_https_origin_http_200 / "${site_basic_auth_header}"',
-  '  assert_remote_https_origin_http_200 /index.html "${site_basic_auth_header}"',
+  'verify_local_origin_public_entrypoints() {',
+  '  assert_remote_https_origin_http_200 /',
+  '  assert_remote_https_origin_http_200 /index.html',
   '  assert_remote_https_origin_http_200 /app',
   '  assert_remote_https_origin_http_200 /api/chat/health',
   '  assert_remote_https_origin_http_200 /api/knowledge/health',
   '  assert_remote_https_origin_http_200 /api/llm-usage/health',
   '  assert_remote_https_origin_http_200 /api/users/health',
   '}',
-  'verify_https_edge_homepage_basic_auth() {',
-  '  assert_https_edge_http_status / 401',
-  '  assert_https_edge_http_status /index.html 401',
-  '  assert_https_edge_http_200 / "${site_basic_auth_header}"',
-  '  assert_https_edge_http_200 /index.html "${site_basic_auth_header}"',
+  'verify_https_edge_public_entrypoints() {',
+  '  assert_https_edge_http_200 /',
+  '  assert_https_edge_http_200 /index.html',
   '  assert_https_edge_http_200 /app',
   '  assert_https_edge_http_200 /api/chat/health',
   '  assert_https_edge_http_200 /api/knowledge/health',
@@ -195,7 +191,7 @@ const githubActionsDeployWithPinnedHostTrust = [
   '}',
   'verify_https_edge_health() {',
   '  assert_https_edge_http_200 /healthz',
-  '  verify_https_edge_homepage_basic_auth',
+  '  verify_https_edge_public_entrypoints',
   '}',
   'verify_deployment() {',
   '  verify_service_health',
@@ -212,22 +208,6 @@ const githubActionsDeployWithPinnedHostTrust = [
   '  run_remote "systemctl is-active --quiet fa-alert-router"',
   '  assert_remote_http_200 http://127.0.0.1:9002/health',
   '}',
-  '',
-].join('\n');
-
-const siteBasicAuthReleaseRenderingFixture = [
-  'FA_SITE_BASIC_AUTH_SECRETS=(',
-  '  FA_SITE_BASIC_AUTH_USER',
-  '  FA_SITE_BASIC_AUTH_HTPASSWD',
-  '  FA_SITE_BASIC_AUTH_CHECK_HEADER',
-  ')',
-  'install_site_basic_auth_files() {',
-  '  auth_dir="${release_dir}/.fa"',
-  '  install -d -m 755 "${auth_dir}"',
-  '  install -m 644 "${auth_dir}/site-basic-auth.htpasswd.tmp" "${auth_dir}/site-basic-auth.htpasswd"',
-  '  install -m 600 "${auth_dir}/site-basic-auth.curl-header.tmp" "${auth_dir}/site-basic-auth.curl-header"',
-  '}',
-  'install_site_basic_auth_files "${release_dir}"',
   '',
 ].join('\n');
 
@@ -252,7 +232,6 @@ const provisionWithNarrowSudoWrappers = [
   'FA_PROD_OPENROUTER_APP_API_KEY=FA_OPENROUTER_APP_API_KEY',
   'FA_PROD_MINIMAX_APP_API_KEY=FA_MINIMAX_APP_API_KEY',
   'gcloud secrets versions access latest --secret=FA_INTERNAL_AUTH_TOKEN --project="${FA_GCP_PROJECT_ID}" >/tmp/fa-prod-env',
-  siteBasicAuthReleaseRenderingFixture,
   'install -m 640 -o root -g "${deploy_user}" /tmp/fa-prod-env /etc/fa/.env.prod',
   'WRAPPER',
   "install -m 755 -o root -g root /dev/stdin /usr/local/sbin/fa-deploy-nginx <<'WRAPPER'",
@@ -322,7 +301,6 @@ const cloudInitWithNarrowSudoWrappers = [
   '      FA_PROD_OPENROUTER_APP_API_KEY=FA_OPENROUTER_APP_API_KEY',
   '      FA_PROD_MINIMAX_APP_API_KEY=FA_MINIMAX_APP_API_KEY',
   '      gcloud secrets versions access latest --secret=FA_INTERNAL_AUTH_TOKEN --project="${FA_GCP_PROJECT_ID}" >/tmp/fa-prod-env',
-  siteBasicAuthReleaseRenderingFixture,
   '      install -m 640 -o root -g deploy /tmp/fa-prod-env /etc/fa/.env.prod',
   '  - path: /usr/local/sbin/fa-deploy-nginx',
   '    owner: root:root',
@@ -406,9 +384,6 @@ const terraformGcpDataPlaneWithProvisioningDnsToken = [
   'locals {',
   '  runtime_secret_names = toset([',
   '    "FA_INTERNAL_AUTH_TOKEN",',
-  '    "FA_SITE_BASIC_AUTH_USER",',
-  '    "FA_SITE_BASIC_AUTH_HTPASSWD",',
-  '    "FA_SITE_BASIC_AUTH_CHECK_HEADER",',
   '    "FA_DEV_OPENROUTER_APP_API_KEY",',
   '    "FA_DEV_MINIMAX_APP_API_KEY",',
   '    "FA_OPENROUTER_APP_API_KEY",',
@@ -1086,12 +1061,6 @@ function withStaticFixture<T>(files: Record<string, string | null>, run: (root: 
       root,
       'scripts/dev-host/caddy/fishing-assistant.Caddyfile',
       [
-        '@fa_home {',
-        '    path / /index.html',
-        '}',
-        'basic_auth @fa_home {',
-        '    fa {$FA_SITE_BASIC_AUTH_CADDY_HASH}',
-        '}',
         'handle / {',
         '    reverse_proxy localhost:3100',
         '}',
@@ -1119,7 +1088,7 @@ function withStaticFixture<T>(files: Record<string, string | null>, run: (root: 
     writeFile(
       root,
       'scripts/hetzner/load-secrets.sh',
-      `#!/usr/bin/env bash\nFA_PROD_OPENROUTER_APP_API_KEY=FA_OPENROUTER_APP_API_KEY\nFA_PROD_MINIMAX_APP_API_KEY=FA_MINIMAX_APP_API_KEY\n${siteBasicAuthReleaseRenderingFixture}`
+      '#!/usr/bin/env bash\nFA_PROD_OPENROUTER_APP_API_KEY=FA_OPENROUTER_APP_API_KEY\nFA_PROD_MINIMAX_APP_API_KEY=FA_MINIMAX_APP_API_KEY\n'
     );
     writeFile(root, 'scripts/hetzner/load-observability-env.sh', '#!/usr/bin/env bash\n');
     writeFile(
@@ -2263,16 +2232,16 @@ describe('static verifier', () => {
     );
   });
 
-  it('requires the DEV FA Caddy site snippet to protect only homepage routes', () => {
+  it('rejects the DEV FA Caddy site snippet when homepage edge auth is reintroduced', () => {
     withStaticFixture(
       {
         'scripts/dev-host/caddy/fishing-assistant.Caddyfile':
-          '@fa_home { path / /index.html }\nhandle / { reverse_proxy localhost:3100 }\nhandle_path /api/users/* { reverse_proxy localhost:3204 }\n',
+          'basic_auth { fa {$FA_SITE_BASIC_AUTH_CADDY_HASH} }\nhandle / { reverse_proxy localhost:3100 }\nhandle_path /api/users/* { reverse_proxy localhost:3204 }\n',
       },
       (root) => {
         expect(validateStaticRepository(root)).toEqual(
           expect.arrayContaining([
-            'scripts/dev-host/caddy/fishing-assistant.Caddyfile must protect / and /index.html with Basic Auth while keeping app/API routes public',
+            'scripts/dev-host/caddy/fishing-assistant.Caddyfile must serve the public homepage without an edge auth gate',
           ])
         );
       }
@@ -3096,29 +3065,6 @@ describe('static verifier', () => {
             'scripts/hetzner/provision.sh fa-load-secrets wrapper must read FA_PROD_MINIMAX_APP_API_KEY into runtime FA_MINIMAX_APP_API_KEY',
             'terraform/hetzner-prod/cloud-init.yaml.tftpl fa-load-secrets wrapper must read FA_PROD_MINIMAX_APP_API_KEY into runtime FA_MINIMAX_APP_API_KEY',
             'terraform/gcp-data-plane/main.tf must define FA_DEV_MINIMAX_APP_API_KEY and FA_PROD_MINIMAX_APP_API_KEY as runtime Secret Manager secrets',
-          ])
-        );
-      }
-    );
-  });
-
-  it('requires production site Basic Auth secrets and release-local render files', () => {
-    withStaticFixture(
-      {
-        'terraform/gcp-data-plane/main.tf':
-          'locals { runtime_secret_names = toset(["FA_INTERNAL_AUTH_TOKEN"]) provisioning_secret_names = toset([]) }\n',
-        'scripts/hetzner/load-secrets.sh': 'FA_RUNTIME_SECRETS=(FA_INTERNAL_AUTH_TOKEN)\n',
-        'scripts/hetzner/provision.sh': 'FA_RUNTIME_SECRETS=(FA_INTERNAL_AUTH_TOKEN)\n',
-        'terraform/hetzner-prod/cloud-init.yaml.tftpl':
-          'FA_RUNTIME_SECRETS=(FA_INTERNAL_AUTH_TOKEN)\n',
-      },
-      (root) => {
-        expect(validateStaticRepository(root)).toEqual(
-          expect.arrayContaining([
-            'terraform/gcp-data-plane/main.tf must define FA_SITE_BASIC_AUTH_USER, FA_SITE_BASIC_AUTH_HTPASSWD, and FA_SITE_BASIC_AUTH_CHECK_HEADER as runtime Secret Manager secrets',
-            'scripts/hetzner/load-secrets.sh must render release-local site Basic Auth files',
-            'scripts/hetzner/provision.sh fa-load-secrets wrapper must render release-local site Basic Auth files',
-            'terraform/hetzner-prod/cloud-init.yaml.tftpl fa-load-secrets wrapper must render release-local site Basic Auth files',
           ])
         );
       }
