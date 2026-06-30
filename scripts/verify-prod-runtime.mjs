@@ -846,6 +846,12 @@ function validateProdRuntimeRepository(root = repoRoot) {
     ) {
       errors.push('production PM2 config must not include the web app');
     }
+
+    if (app.env?.['FA_SIGNUP_ALLOWED_EMAIL_PATTERN'] !== '^[^@\\s]+@example\\.com$') {
+      errors.push(
+        `${app.name} must receive FA_SIGNUP_ALLOWED_EMAIL_PATTERN from the rendered production env`
+      );
+    }
   }
 
   for (const relativePath of [

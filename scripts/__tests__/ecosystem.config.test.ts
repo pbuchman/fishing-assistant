@@ -385,4 +385,24 @@ describe('production PM2 config', () => {
       rmSync(path.dirname(fixturePath), { recursive: true, force: true });
     }
   });
+
+  it('passes signup allow-list config from the rendered prod env to services', () => {
+    const fixturePath = writeProdFixture(
+      [
+        'FA_ENVIRONMENT=prod',
+        'FA_BIND_HOST=0.0.0.0',
+        'FA_SIGNUP_ALLOWED_EMAIL_PATTERN=^[^@\\s]+@example\\.com$',
+      ].join('\n')
+    );
+
+    try {
+      const config = withEnv({ FA_PROD_ENV_FILE: fixturePath }, () => loadConfig(prodConfigPath));
+
+      for (const app of config.apps) {
+        expect(app.env?.['FA_SIGNUP_ALLOWED_EMAIL_PATTERN']).toBe('^[^@\\s]+@example\\.com$');
+      }
+    } finally {
+      rmSync(path.dirname(fixturePath), { recursive: true, force: true });
+    }
+  });
 });
