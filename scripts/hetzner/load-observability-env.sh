@@ -4,6 +4,10 @@ set -euo pipefail
 IFS=$'\n\t'
 
 FA_ENVIRONMENT="${FA_ENVIRONMENT:-}"
+if [[ -f /etc/fa/project.env ]]; then
+  # shellcheck disable=SC1091
+  . /etc/fa/project.env
+fi
 FA_GCP_PROJECT_ID="${FA_GCP_PROJECT_ID:-replace-with-gcp-project-id}"
 FA_GRAFANA_INSTANCE_URL="${FA_GRAFANA_INSTANCE_URL:-https://example.grafana.net}"
 FA_GRAFANA_LOKI_DATASOURCE_UID="${FA_GRAFANA_LOKI_DATASOURCE_UID:-grafanacloud-logs}"

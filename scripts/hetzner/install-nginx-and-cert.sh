@@ -5,6 +5,10 @@ IFS=$'\n\t'
 
 DOMAIN="${DOMAIN:-fishing-assistant.online}"
 FA_ENVIRONMENT="${FA_ENVIRONMENT:-}"
+if [[ -f /etc/fa/project.env ]]; then
+  # shellcheck disable=SC1091
+  . /etc/fa/project.env
+fi
 FA_GCP_PROJECT_ID="${FA_GCP_PROJECT_ID:-replace-with-gcp-project-id}"
 FA_HETZNER_PROVISIONER_KEY_FILE="${FA_HETZNER_PROVISIONER_KEY_FILE:-/etc/fa/keys/provisioner-sa-key.json}"
 CLOUDFLARE_CREDENTIALS_FILE="${CLOUDFLARE_CREDENTIALS_FILE:-/etc/letsencrypt/cloudflare.ini}"

@@ -4,6 +4,10 @@ set -euo pipefail
 IFS=$'\n\t'
 
 FA_ENVIRONMENT="${FA_ENVIRONMENT:-}"
+if [[ -f /etc/fa/project.env ]]; then
+  # shellcheck disable=SC1091
+  . /etc/fa/project.env
+fi
 FA_GCP_PROJECT_ID="${FA_GCP_PROJECT_ID:-replace-with-gcp-project-id}"
 FA_GCP_REGION="${FA_GCP_REGION:-europe-central2}"
 FA_LOG_LEVEL="${FA_LOG_LEVEL:-info}"
