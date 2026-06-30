@@ -1,0 +1,51 @@
+handle /healthz {
+    respond "ok" 200
+}
+
+handle /alerts/grafana {
+    reverse_proxy 127.0.0.1:9002
+}
+
+@fa_home {
+    path / /index.html
+}
+
+basic_auth @fa_home {
+    fa {$FA_SITE_BASIC_AUTH_CADDY_HASH}
+}
+
+handle / {
+    reverse_proxy localhost:3100
+}
+
+handle /assets/* {
+    reverse_proxy localhost:3100
+}
+
+handle /webhook {
+    reverse_proxy localhost:9001
+}
+
+handle /api/*/internal/* {
+    respond "not found" 404
+}
+
+handle_path /api/chat/* {
+    reverse_proxy localhost:3201
+}
+
+handle_path /api/knowledge/* {
+    reverse_proxy localhost:3202
+}
+
+handle_path /api/llm-usage/* {
+    reverse_proxy localhost:3203
+}
+
+handle_path /api/users/* {
+    reverse_proxy localhost:3204
+}
+
+handle {
+    reverse_proxy localhost:3100
+}

@@ -1,0 +1,18 @@
+{
+  "name": "@fa/llm-pricing",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. packages/llm-pricing/src",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "build": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fa/common-core": "workspace:*",
+    "@fa/internal-clients": "workspace:*"
+  }
+}

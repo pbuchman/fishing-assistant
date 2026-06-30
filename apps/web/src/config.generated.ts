@@ -1,0 +1,15 @@
+// GENERATED FILE - DO NOT EDIT
+
+export const WEB_SERVICE_URLS = {
+  CHAT_SERVICE: '/api/chat',
+  KNOWLEDGE_SERVICE: '/api/knowledge',
+  LLM_USAGE_SERVICE: '/api/llm-usage',
+  USER_SERVICE: '/api/users',
+} as const;
+
+export const WEB_SERVICE_ENV_NAMES = {
+  CHAT_SERVICE: 'FA_CHAT_SERVICE_URL',
+  KNOWLEDGE_SERVICE: 'FA_KNOWLEDGE_SERVICE_URL',
+  LLM_USAGE_SERVICE: 'FA_LLM_USAGE_SERVICE_URL',
+  USER_SERVICE: 'FA_USER_SERVICE_URL',
+} as const;

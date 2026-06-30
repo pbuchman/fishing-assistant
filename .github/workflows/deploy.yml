@@ -1,0 +1,131 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        required: true
+        default: dev
+        options:
+          - dev
+          - prod
+      ref:
+        description: Git ref to deploy
+        required: false
+        default: main
+      deploy_nginx:
+        description: Deploy and reload nginx config on prod
+        type: boolean
+        required: false
+        default: false
+      bootstrap_origin_http_only:
+        description: Bootstrap PROD origin over HTTP before Cloudflare DNS/TLS is ready
+        type: boolean
+        required: false
+        default: false
+      allow_unmerged_prod_ref:
+        description: Allow temporary production deploys from refs not merged to main
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+      - name: Require PROD deploy ref on main
+        if: ${{ inputs.environment == 'prod' && inputs.allow_unmerged_prod_ref != true }}
+        run: |
+          deploy_sha="$(git rev-parse HEAD)"
+          git fetch --no-tags --prune origin +refs/heads/main:refs/remotes/origin/main
+          main_sha="$(git rev-parse --verify refs/remotes/origin/main)"
+          if ! git merge-base --is-ancestor "$deploy_sha" "$main_sha"; then
+            echo "::error::PROD deploy ref ${deploy_sha} is not an ancestor of origin/main (${main_sha})."
+            exit 1
+          fi
+      - name: Note unmerged PROD debug deploy
+        if: ${{ inputs.environment == 'prod' && inputs.allow_unmerged_prod_ref == true }}
+        run: |
+          deploy_sha="$(git rev-parse HEAD)"
+          echo "::warning::Deploying temporary unmerged PROD ref ${deploy_sha}; redeploy origin/main after merge."
+      - name: Resolve deploy SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+          terraform_wrapper: false
+      - run: pnpm install --frozen-lockfile
+      - name: Check prior CI gate
+        id: ci_gate
+        if: ${{ inputs.environment == 'prod' }}
+        env:
+          FA_DEPLOY_SHA: ${{ steps.sha.outputs.sha }}
+          FA_GITHUB_REPOSITORY: ${{ github.repository }}
+          FA_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          response="$(
+            curl --fail-with-body --silent --show-error \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer ${FA_GITHUB_TOKEN}" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${FA_GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${FA_DEPLOY_SHA}&status=success&per_page=1"
+          )"
+          success_count="$(
+            node -e "let input = ''; process.stdin.on('data', (chunk) => input += chunk); process.stdin.on('end', () => { const payload = JSON.parse(input); console.log(payload.total_count > 0 ? '1' : '0'); });" <<< "$response"
+          )"
+          if [[ "$success_count" != "0" ]]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+            echo "Found successful ci.yml gate for ${FA_DEPLOY_SHA}."
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+            echo "No successful ci.yml gate found for ${FA_DEPLOY_SHA}; running production gate in this workflow."
+          fi
+      - name: Run production gate
+        if: ${{ inputs.environment == 'prod' && steps.ci_gate.outputs.passed != 'true' }}
+        run: pnpm run ci:prod
+      - name: DEV deployment note
+        if: ${{ inputs.environment == 'dev' }}
+        run: |
+          echo "DEV is updated by the dev-host GitHub webhook after pushes to main."
+          echo "For manual DEV deploy, run scripts/deploy/deploy-dev.sh on dev-host for commit ${{ steps.sha.outputs.sha }}."
+      - name: Deploy PROD to Hetzner
+        if: ${{ inputs.environment == 'prod' }}
+        env:
+          FA_DEPLOY_SHA: ${{ steps.sha.outputs.sha }}
+          FA_HETZNER_PROD_HOST: ${{ secrets.FA_HETZNER_PROD_HOST }}
+          FA_HETZNER_PROD_HOST_KEY_SHA256: ${{ secrets.FA_HETZNER_PROD_HOST_KEY_SHA256 }}
+          FA_HETZNER_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.FA_HETZNER_DEPLOY_SSH_PRIVATE_KEY }}
+          FA_PROD_DOMAIN: ${{ vars.FA_PROD_DOMAIN || 'fishing-assistant.online' }}
+          FA_GRAFANA_INSTANCE_URL: ${{ vars.FA_GRAFANA_INSTANCE_URL || 'https://example.grafana.net' }}
+          FA_GRAFANA_LOKI_DATASOURCE_UID: ${{ vars.FA_GRAFANA_LOKI_DATASOURCE_UID || 'grafanacloud-logs' }}
+          FA_ALERT_ROUTER_WEBHOOK_URL: ${{ vars.FA_ALERT_ROUTER_WEBHOOK_URL || 'https://fishing-assistant.online/alerts/grafana' }}
+          FA_CERTBOT_EMAIL: ${{ vars.FA_CERTBOT_EMAIL || 'ops@example.com' }}
+          FA_AUTH0_DOMAIN: ${{ vars.FA_AUTH0_DOMAIN }}
+          FA_AUTH0_CLIENT_ID: ${{ vars.FA_AUTH0_CLIENT_ID }}
+          FA_AUTH0_AUDIENCE: ${{ vars.FA_AUTH0_AUDIENCE }}
+        run: |
+          args=(--sha "$FA_DEPLOY_SHA")
+          if [[ "${{ inputs.deploy_nginx }}" == "true" ]]; then
+            args+=(--deploy-nginx)
+          fi
+          if [[ "${{ inputs.bootstrap_origin_http_only }}" == "true" ]]; then
+            args+=(--bootstrap-origin-http-only)
+          fi
+          bash scripts/hetzner/github-actions-deploy.sh "${args[@]}"

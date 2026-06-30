@@ -1,0 +1,13 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: fa-alert-router
+    receivers:
+      - uid: fa-alert-router-webhook
+        type: webhook
+        settings:
+          url: ${FA_ALERT_ROUTER_WEBHOOK_URL}
+          httpMethod: POST
+          httpHeaderName1: X-FA-Alert-Secret
+          httpHeaderValue1: ${FA_ALERT_ROUTER_WEBHOOK_SECRET}

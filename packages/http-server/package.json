@@ -1,0 +1,23 @@
+{
+  "name": "@fa/http-server",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. packages/http-server/src",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "build": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.0",
+    "@fastify/swagger": "^9.5.1",
+    "@fastify/swagger-ui": "^5.2.3",
+    "@fa/common-core": "workspace:*",
+    "@fa/common-http": "workspace:*",
+    "@fa/http-contracts": "workspace:*",
+    "fastify": "^5.6.2"
+  }
+}

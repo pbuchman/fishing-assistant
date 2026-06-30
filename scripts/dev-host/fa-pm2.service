@@ -1,0 +1,22 @@
+[Unit]
+Description=Fishing Assistant PM2 process manager
+Documentation=https://pm2.keymetrics.io/
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=fa-deploy
+LimitNOFILE=infinity
+LimitNPROC=infinity
+LimitCORE=infinity
+Environment=FA_PM2_HOME=%h/.pm2-fa
+Environment=PM2_HOME=%h/.pm2-fa
+WorkingDirectory=%h/deploy/fishing-assistant
+ExecStartPre=/usr/bin/direnv allow %h/deploy/fishing-assistant
+ExecStart=/usr/bin/env -u PORT /usr/bin/direnv exec %h/deploy/fishing-assistant pnpm exec pm2 startOrReload ecosystem.config.cjs --update-env
+ExecReload=/usr/bin/env -u PORT /usr/bin/direnv exec %h/deploy/fishing-assistant pnpm exec pm2 reload fa-llm-usage-service fa-knowledge-service fa-chat-service fa-user-service fa-web
+ExecStop=/usr/bin/direnv exec %h/deploy/fishing-assistant pnpm exec pm2 kill
+
+[Install]
+WantedBy=multi-user.target

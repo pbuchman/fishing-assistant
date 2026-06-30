@@ -1,0 +1,291 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: fa-log-alerts
+    folder: Fishing Assistant
+    interval: 1m
+    rules:
+      - uid: fa-backend-error-logs
+        title: FA Backend Error Logs
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env) (count_over_time({app="fishing-assistant"} | json | level="error" [5m])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 1m
+        labels:
+          app: fishing-assistant
+          severity: warning
+        annotations:
+          summary: Backend service error logs detected
+
+      - uid: fa-nginx-5xx
+        title: FA Nginx 5xx
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env) (count_over_time({app="fishing-assistant", source="nginx"} |= " 5" [5m])) > 3'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 2m
+        labels:
+          app: fishing-assistant
+          severity: warning
+        annotations:
+          summary: nginx is returning repeated 5xx responses
+
+      - uid: fa-usage-ingest-failure
+        title: FA Usage Ingest Failure
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env) (count_over_time({app="fishing-assistant"} |= "Usage service ingest request failed" [10m])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 1m
+        labels:
+          app: fishing-assistant
+          severity: warning
+        annotations:
+          summary: LLM usage ingest failures detected
+
+      - uid: fa-deploy-failure
+        title: FA Deploy Failure
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env) (count_over_time({app="fishing-assistant", service="deploy", source="journald"} |~ "(?i)(failed|error)" [10m])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 1m
+        labels:
+          app: fishing-assistant
+          severity: critical
+        annotations:
+          summary: Deployment failure logs detected
+
+      - uid: fa-no-logs-received
+        title: FA No Logs Received
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env) (absent_over_time({app="fishing-assistant", service=~".+"}[15m]))'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 5m
+        labels:
+          app: fishing-assistant
+          severity: critical
+        annotations:
+          summary: Loki has not received FA logs recently
+
+      - uid: fa-user-service-no-logs
+        title: FA User Service No Logs
+        condition: D
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'absent_over_time({app="fishing-assistant", service="user-service", source="pm2"}[15m])'
+          - refId: B
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (env) (count_over_time({app="fishing-assistant", source="docker", service="services"} | json service_name="service" | service_name="user-service" [15m])) < 1'
+          - refId: D
+            datasourceUid: __expr__
+            model:
+              expression: A or B
+              type: threshold
+        for: 5m
+        labels:
+          app: fishing-assistant
+          severity: critical
+        annotations:
+          summary: user-service logs are missing from PM2 or the production Docker stream
+
+      - uid: fa-user-service-down
+        title: FA User Service Down
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'count_over_time({app="fishing-assistant", source="nginx"} |= "/api/users/health" |~ "\\s5[0-9]{2}\\s" [5m]) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 2m
+        labels:
+          app: fishing-assistant
+          severity: critical
+        annotations:
+          summary: nginx edge health checks are seeing user-service failures
+
+      - uid: fa-auth-resolver-failures
+        title: FA Auth Resolver Failures
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env) (count_over_time({app="fishing-assistant"} | json | event="auth_resolver_unavailable" [5m])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 1m
+        labels:
+          app: fishing-assistant
+          severity: critical
+        annotations:
+          summary: auth resolver failures detected in structured service logs
+
+      - uid: fa-auth-failure-spike
+        title: FA Auth Failure Spike
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env, event) (count_over_time({app="fishing-assistant"} | json | event=~"auth_bearer_invalid|auth_jwt_invalid|auth_resolver_denied|auth_admin_required|auth_internal_failed" [5m])) > 20'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 1m
+        labels:
+          app: fishing-assistant
+          severity: warning
+        annotations:
+          summary: auth failure rates have spiked above the expected baseline
+
+      - uid: fa-knowledge-access-refresh-jobs-failed
+        title: FAKnowledgeAccessRefreshJobsFailed
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env) (count_over_time({app="fishing-assistant"} |= "knowledge_access_refresh_job_failed" [10m])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 2m
+        labels:
+          app: fishing-assistant
+          severity: critical
+        annotations:
+          summary: Knowledge access refresh failures detected; lifecycle events include knowledge_access_refresh_job_claimed and knowledge_access_refresh_job_succeeded
+
+      - uid: fa-knowledge-access-chunks-stale
+        title: FAKnowledgeAccessChunksStale
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env) (count_over_time({app="fishing-assistant"} |= "knowledge_access_chunk_marked_stale" [10m])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 5m
+        labels:
+          app: fishing-assistant
+          severity: warning
+        annotations:
+          summary: Knowledge access chunks have been marked stale
+
+      - uid: fa-knowledge-access-revision-mismatch
+        title: FAKnowledgeAccessRevisionMismatch
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env) (count_over_time({app="fishing-assistant"} |= "knowledge_access_mismatch_detected" [10m])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 2m
+        labels:
+          app: fishing-assistant
+          severity: critical
+        annotations:
+          summary: Knowledge access revision mismatch detected
+
+      - uid: fa-knowledge-source-url-rejected
+        title: FAKnowledgeSourceUrlRejected
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env) (count_over_time({app="fishing-assistant"} |= "knowledge_source_url_rejected" [10m])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 2m
+        labels:
+          app: fishing-assistant
+          severity: critical
+        annotations:
+          summary: Knowledge source URL rejected by access policy
+
+      - uid: fa-knowledge-rag-leak-guard-excluded-candidates
+        title: FAKnowledgeRagLeakGuardExcludedCandidates
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: ${FA_GRAFANA_LOKI_DATASOURCE_UID}
+            model:
+              expr: 'sum by (service, env) (count_over_time({app="fishing-assistant"} |= "knowledge_rag_candidate_excluded" [10m])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+        for: 2m
+        labels:
+          app: fishing-assistant
+          severity: warning
+        annotations:
+          summary: Knowledge RAG leak guard excluded retrieval candidates

@@ -1,0 +1,7 @@
+handle /healthz {
+    respond "ok" 200
+}
+
+handle /alerts/grafana {
+    reverse_proxy 127.0.0.1:9002
+}

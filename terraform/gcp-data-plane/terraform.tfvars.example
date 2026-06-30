@@ -1,0 +1,5 @@
+project_id              = "replace-with-gcp-project-id"
+region                  = "europe-central2"
+terraform_state_bucket  = "replace-with-terraform-state-bucket"
+firestore_backup_bucket = "replace-with-firestore-backup-bucket"
+shared_content_bucket   = "replace-with-shared-content-bucket"

@@ -1,0 +1,28 @@
+{
+  "name": "@fa/chat-service",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "build": "node ../../scripts/build-service.mjs chat-service",
+    "test": "vitest run --root ../.. apps/chat-service/src"
+  },
+  "dependencies": {
+    "@fa/common-core": "workspace:*",
+    "@fa/common-http": "workspace:*",
+    "@fa/http-contracts": "workspace:*",
+    "@fa/http-server": "workspace:*",
+    "@fa/infra-firestore": "workspace:*",
+    "@fa/infra-observability": "workspace:*",
+    "@fa/internal-clients": "workspace:*",
+    "@fa/llm-contract": "workspace:*",
+    "@fa/llm-factory": "workspace:*",
+    "@fa/llm-pricing": "workspace:*",
+    "dotenv": "^17.2.3"
+  }
+}

@@ -1,0 +1,25 @@
+[Unit]
+Description=Fishing Assistant GitHub webhook handler
+After=network.target caddy.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=fa-deploy
+WorkingDirectory=%h/tools/fa-webhook-handler
+Environment=PORT=9001
+Environment=FA_NODE_BIN=/usr/bin/node
+Environment=FA_DEV_REPO_PATH=%h/deploy/fishing-assistant
+Environment=FA_DEV_DEPLOY_SCRIPT=%h/deploy/fishing-assistant/scripts/deploy/deploy-dev.sh
+Environment=FA_PM2_HOME=%h/.pm2-fa
+Environment=PM2_HOME=%h/.pm2-fa
+EnvironmentFile=-%h/tools/fa-webhook-handler/.env
+ExecStart=/usr/bin/env ${FA_NODE_BIN} %h/tools/fa-webhook-handler/webhook-handler.mjs
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fa-webhook-handler
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,68 @@
+loki.write "grafana_cloud" {
+  endpoint {
+    url = env("FA_GRAFANA_LOKI_URL")
+
+    basic_auth {
+      username = env("FA_GRAFANA_LOKI_USERNAME")
+      password = env("FA_GRAFANA_LOKI_TOKEN")
+    }
+  }
+}
+
+discovery.docker "fa_services" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "fa_services" {
+  targets = discovery.docker.fa_services.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex = "/fa-services"
+    action = "keep"
+  }
+}
+
+loki.source.docker "fa_services" {
+  host = "unix:///var/run/docker.sock"
+  targets = discovery.relabel.fa_services.output
+  labels = { app = "fishing-assistant", env = "{{ENVIRONMENT}}", host = "{{HOST}}", service = "services", source = "docker", sha = "{{SHA}}", runtime = "docker" }
+
+  forward_to = [loki.write.grafana_cloud.receiver]
+}
+
+loki.source.file "nginx" {
+  targets = [
+    { __path__ = "/var/log/nginx/*.log", service = "nginx", env = "{{ENVIRONMENT}}", host = "{{HOST}}", app = "fishing-assistant", source = "nginx", sha = "{{SHA}}", runtime = "nginx" },
+  ]
+
+  forward_to = [loki.write.grafana_cloud.receiver]
+
+  file_match {
+    enabled = true
+  }
+}
+
+loki.source.file "fa_logs" {
+  targets = [
+    { __path__ = "/var/log/fa/*.log", service = "fa-runtime", env = "{{ENVIRONMENT}}", host = "{{HOST}}", app = "fishing-assistant", source = "file", sha = "{{SHA}}", runtime = "host" },
+  ]
+
+  forward_to = [loki.write.grafana_cloud.receiver]
+
+  file_match {
+    enabled = true
+  }
+}
+
+loki.source.journal "alert_router" {
+  matches = "_SYSTEMD_UNIT=fa-alert-router.service"
+  labels = { app = "fishing-assistant", env = "{{ENVIRONMENT}}", host = "{{HOST}}", service = "alert-router", source = "journald", sha = "{{SHA}}", runtime = "systemd" }
+  forward_to = [loki.write.grafana_cloud.receiver]
+}
+
+loki.source.journal "deploy" {
+  matches = "_SYSTEMD_UNIT=fa-deploy.service"
+  labels = { app = "fishing-assistant", env = "{{ENVIRONMENT}}", host = "{{HOST}}", service = "deploy", source = "journald", sha = "{{SHA}}", runtime = "systemd" }
+  forward_to = [loki.write.grafana_cloud.receiver]
+}

@@ -1,0 +1,33 @@
+{
+  "description": "Single source of truth for Fishing Assistant web-facing service URLs.",
+  "services": [
+    {
+      "name": "chat-service",
+      "envSuffix": "CHAT_SERVICE",
+      "apiPath": "/api/chat",
+      "proxyTarget": "http://localhost:3201",
+      "serviceUrl": "http://localhost:3201"
+    },
+    {
+      "name": "knowledge-service",
+      "envSuffix": "KNOWLEDGE_SERVICE",
+      "apiPath": "/api/knowledge",
+      "proxyTarget": "http://localhost:3202",
+      "serviceUrl": "http://localhost:3202"
+    },
+    {
+      "name": "llm-usage-service",
+      "envSuffix": "LLM_USAGE_SERVICE",
+      "apiPath": "/api/llm-usage",
+      "proxyTarget": "http://localhost:3203",
+      "serviceUrl": "http://localhost:3203"
+    },
+    {
+      "name": "user-service",
+      "envSuffix": "USER_SERVICE",
+      "apiPath": "/api/users",
+      "proxyTarget": "http://localhost:3204",
+      "serviceUrl": "http://localhost:3204"
+    }
+  ]
+}

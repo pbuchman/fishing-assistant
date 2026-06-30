@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "files": [],
+  "references": [
+    { "path": "./apps/web" },
+    { "path": "./apps/chat-service" },
+    { "path": "./apps/knowledge-service" },
+    { "path": "./apps/llm-usage-service" },
+    { "path": "./apps/user-service" },
+    { "path": "./packages/common-core" },
+    { "path": "./packages/http-contracts" },
+    { "path": "./packages/common-http" },
+    { "path": "./packages/http-server" },
+    { "path": "./packages/infra-observability" },
+    { "path": "./packages/infra-firestore" },
+    { "path": "./packages/internal-clients" },
+    { "path": "./packages/llm-contract" },
+    { "path": "./packages/llm-factory" },
+    { "path": "./packages/llm-pricing" }
+  ]
+}

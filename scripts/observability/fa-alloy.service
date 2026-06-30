@@ -1,0 +1,14 @@
+[Unit]
+Description=Fishing Assistant Grafana Alloy collector
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/fa/observability.env
+ExecStart=/usr/bin/alloy run --server.http.listen-addr=127.0.0.1:12346 /etc/fa/alloy/fa.alloy
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

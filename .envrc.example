@@ -1,0 +1,41 @@
+# Fishing Assistant direnv loader.
+#
+# Usage:
+#   # local runtime
+#   cp .env.dev.example .env.dev.local
+#   cp .envrc.example .envrc
+#   direnv allow
+#
+# Switch profiles:
+#   export FA_ENV_FILE=.env.prod.local
+#   direnv reload
+
+export FA_ENV_FILE="${FA_ENV_FILE:-.env.dev.local}"
+
+if [[ -f "$FA_ENV_FILE" ]]; then
+  dotenv "$FA_ENV_FILE"
+else
+  echo "FA env file not found: $FA_ENV_FILE"
+  echo "Create it from .env.dev.example or set FA_ENV_FILE."
+fi
+
+if [[ -f .envrc.local ]]; then
+  source_env .envrc.local
+fi
+
+export GOOGLE_CLOUD_PROJECT="${FA_GCP_PROJECT_ID:-replace-with-gcp-project-id}"
+export GOOGLE_APPLICATION_CREDENTIALS="${FA_GCP_ADMIN_KEY_FILE:-replace-with-local-fa-admin-key-path}"
+export CLOUDSDK_CORE_PROJECT="$GOOGLE_CLOUD_PROJECT"
+export CLOUDSDK_COMPUTE_REGION="${FA_GCP_REGION:-europe-central2}"
+export GCLOUD_PROJECT="$GOOGLE_CLOUD_PROJECT"
+export PM2_HOME="${FA_PM2_HOME:-$HOME/.pm2-fa}"
+
+# Auth0 SPA values are browser-safe. Auth0 issuer/JWKS, bootstrap admin
+# emails, user-service internal URL, and internal auth tokens are backend-only.
+
+# Local PM2 talks to real FA GCP data. Keep emulator env vars out of the
+# process environment so Firestore and Secret Manager clients do not
+# accidentally point at local emulators inherited from another project.
+unset FIRESTORE_EMULATOR_HOST
+unset STORAGE_EMULATOR_HOST
+unset PUBSUB_EMULATOR_HOST

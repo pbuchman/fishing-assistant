@@ -1,0 +1,19 @@
+{
+  "name": "@fa/llm-factory",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. packages/llm-factory/src",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "build": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fa/llm-contract": "workspace:*",
+    "@fa/llm-pricing": "workspace:*",
+    "eventsource-parser": "3.1.0"
+  }
+}

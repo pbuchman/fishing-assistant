@@ -1,0 +1,118 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1200"
+  height="630"
+  viewBox="0 0 1200 630"
+  fill="none"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Fishing Assistant preview</title>
+  <desc id="desc">
+    A public preview card for Fishing Assistant with Polish copy and subtle fishing-inspired
+    line art.
+  </desc>
+  <rect width="1200" height="630" fill="#F4F7FB" />
+  <rect
+    x="56"
+    y="56"
+    width="1088"
+    height="518"
+    rx="32"
+    fill="#FFFFFF"
+    stroke="#D7E4DE"
+    stroke-width="2"
+  />
+  <path d="M56 130H1144" stroke="#DDE7E2" stroke-width="2" />
+  <path
+    d="M88 162C194 124 300 118 402 146C479 168 543 210 612 226C690 245 758 226 834 186C922 139 1011 122 1112 142"
+    stroke="#24765A"
+    stroke-width="5"
+    stroke-linecap="round"
+  />
+  <path
+    d="M88 198C192 160 294 154 396 182C476 204 543 246 612 262C690 281 758 262 834 222C922 175 1011 158 1112 178"
+    stroke="#9EC9B8"
+    stroke-width="3"
+    stroke-linecap="round"
+  />
+  <rect x="104" y="98" width="150" height="36" rx="18" fill="#EAF4EF" />
+  <text
+    x="129"
+    y="123"
+    fill="#24765A"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="18"
+    font-weight="700"
+    letter-spacing="0"
+  >
+    Fishing Assistant
+  </text>
+  <text
+    x="104"
+    y="298"
+    fill="#10231D"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="58"
+    font-weight="800"
+    letter-spacing="0"
+  >
+    Fishing Assistant
+  </text>
+  <text
+    x="104"
+    y="362"
+    fill="#355449"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="26"
+    font-weight="600"
+    letter-spacing="0"
+  >
+    Asystent wedkarski do planowania wypraw i pracy z wiedza.
+  </text>
+  <rect x="104" y="410" width="236" height="58" rx="29" fill="#24765A" />
+  <text
+    x="222"
+    y="448"
+    text-anchor="middle"
+    fill="#FFFFFF"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="22"
+    font-weight="800"
+    letter-spacing="0"
+  >
+    Strona publiczna
+  </text>
+  <rect x="378" y="410" width="172" height="58" rx="29" fill="#EEF7F1" />
+  <text
+    x="464"
+    y="448"
+    text-anchor="middle"
+    fill="#1D604A"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="22"
+    font-weight="700"
+    letter-spacing="0"
+  >
+    Baza wiedzy
+  </text>
+  <circle cx="966" cy="372" r="104" fill="#EAF4EF" />
+  <path
+    d="M890 372C908 336 944 314 986 314C1020 314 1049 328 1070 352C1082 366 1088 382 1088 398C1088 434 1058 464 1022 464C988 464 958 448 936 422C922 406 910 388 890 372Z"
+    fill="#24765A"
+  />
+  <path d="M1070 352L1114 328L1100 372L1114 416L1070 392" fill="#1D604A" />
+  <circle cx="1000" cy="354" r="8" fill="#F4F7FB" />
+  <path
+    d="M898 404C946 390 990 388 1042 404"
+    stroke="#F4F7FB"
+    stroke-width="4"
+    stroke-linecap="round"
+  />
+  <path
+    d="M926 438C974 424 1018 422 1070 438"
+    stroke="#D7E4DE"
+    stroke-width="4"
+    stroke-linecap="round"
+  />
+</svg>

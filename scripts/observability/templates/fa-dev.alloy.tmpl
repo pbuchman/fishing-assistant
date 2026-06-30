@@ -1,0 +1,38 @@
+loki.write "grafana_cloud" {
+  endpoint {
+    url = env("FA_GRAFANA_LOKI_URL")
+
+    basic_auth {
+      username = env("FA_GRAFANA_LOKI_USERNAME")
+      password = env("FA_GRAFANA_LOKI_TOKEN")
+    }
+  }
+}
+
+loki.source.file "pm2" {
+  targets = [
+    { __path__ = "{{PM2_LOG_DIR}}/fa-chat-service-*.log", service = "chat-service", env = "{{ENVIRONMENT}}", host = "{{HOST}}", app = "fishing-assistant", source = "pm2" },
+    { __path__ = "{{PM2_LOG_DIR}}/fa-knowledge-service-*.log", service = "knowledge-service", env = "{{ENVIRONMENT}}", host = "{{HOST}}", app = "fishing-assistant", source = "pm2" },
+    { __path__ = "{{PM2_LOG_DIR}}/fa-llm-usage-service-*.log", service = "llm-usage-service", env = "{{ENVIRONMENT}}", host = "{{HOST}}", app = "fishing-assistant", source = "pm2" },
+    { __path__ = "{{PM2_LOG_DIR}}/fa-user-service-*.log", service = "user-service", env = "{{ENVIRONMENT}}", host = "{{HOST}}", app = "fishing-assistant", source = "pm2" },
+    { __path__ = "{{PM2_LOG_DIR}}/fa-web-*.log", service = "web", env = "{{ENVIRONMENT}}", host = "{{HOST}}", app = "fishing-assistant", source = "pm2" },
+  ]
+
+  forward_to = [loki.write.grafana_cloud.receiver]
+
+  file_match {
+    enabled = true
+  }
+}
+
+loki.source.journal "dev_host_services" {
+  matches = "_SYSTEMD_UNIT=fa-webhook-handler.service"
+  labels = { app = "fishing-assistant", env = "{{ENVIRONMENT}}", host = "{{HOST}}", service = "webhook-handler", source = "journald" }
+  forward_to = [loki.write.grafana_cloud.receiver]
+}
+
+loki.source.journal "alert_router" {
+  matches = "_SYSTEMD_UNIT=fa-alert-router.service"
+  labels = { app = "fishing-assistant", env = "{{ENVIRONMENT}}", host = "{{HOST}}", service = "alert-router", source = "journald" }
+  forward_to = [loki.write.grafana_cloud.receiver]
+}

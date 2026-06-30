@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Grafana Logs'
+  short_description: 'Query FA Grafana Loki logs safely'
+  default_prompt: 'Use $grafana-logs to inspect DEV or PROD FA Loki logs for this incident.'

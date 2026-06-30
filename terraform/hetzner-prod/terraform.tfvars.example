@@ -1,0 +1,13 @@
+domain              = "fishing-assistant.online"
+server_name         = "fa-prod-1"
+hetzner_location    = "nbg1"
+hetzner_server_type = "cx33"
+hetzner_image       = "ubuntu-24.04"
+enable_backups      = true
+
+# ssh-keygen -t ed25519 -C "fa-hetzner-deploy" -f ~/.ssh/fa_hetzner_deploy
+deploy_ssh_public_key = "ssh-ed25519 AAAA_REPLACE_ME fa-hetzner-deploy"
+
+# Start broad to match FA, then narrow when stable operator source
+# ranges are known.
+ssh_allowed_cidrs = ["0.0.0.0/0", "::/0"]

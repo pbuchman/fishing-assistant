@@ -1,0 +1,74 @@
+{
+  "$schema": "https://fishing-assistant.online/schemas/firestore-collections.schema.json",
+  "description": "Fishing Assistant Firestore collection ownership registry.",
+  "collections": {
+    "_migrations": {
+      "owner": "migration-runner",
+      "description": "Applied migration ledger for repository-managed Firestore changes."
+    },
+    "fishing_conversations": {
+      "owner": "chat-service",
+      "description": "User-owned chat conversation metadata with soft-delete state."
+    },
+    "fishing_conversation_messages": {
+      "owner": "chat-service",
+      "description": "User-owned conversation messages, including completed and failed assistant responses."
+    },
+    "fa_chat_runtime_settings": {
+      "owner": "chat-service",
+      "description": "Chat-service-owned runtime settings such as the active chat model."
+    },
+    "fa_answer_gap_candidates": {
+      "owner": "chat-service",
+      "description": "Chat-service-owned pending user-consent records for detected Answer Gaps before admin-visible sharing."
+    },
+    "fa_knowledge_nodes": {
+      "owner": "knowledge-service",
+      "description": "Knowledge Base tree nodes for root, category, section, and page hierarchy."
+    },
+    "fa_knowledge_pages": {
+      "owner": "knowledge-service",
+      "description": "Knowledge Base page records with markdown, source metadata, and effective access state."
+    },
+    "fa_knowledge_chunks": {
+      "owner": "knowledge-service",
+      "description": "RAG chunks derived from Knowledge Base pages with effective access metadata."
+    },
+    "fa_knowledge_access_refresh_jobs": {
+      "owner": "knowledge-service",
+      "description": "Knowledge Base access refresh jobs for category and page effective-access changes."
+    },
+    "fa_knowledge_access_audits": {
+      "owner": "knowledge-service",
+      "description": "Knowledge Base access consistency audit records for chunks, revisions, and source URLs."
+    },
+    "fa_answer_gaps": {
+      "owner": "knowledge-service",
+      "description": "Admin-facing backlog of user questions the assistant could not answer from accessible retrieved Knowledge Base evidence."
+    },
+    "llm_usage_events": {
+      "owner": "llm-usage-service",
+      "description": "Immutable LLM usage and cost tracking events."
+    },
+    "llm_usage_daily_aggregates": {
+      "owner": "llm-usage-service",
+      "description": "Daily aggregated token and cost totals."
+    },
+    "llm_pricing": {
+      "owner": "llm-usage-service",
+      "description": "Provider/model pricing catalog used by usage accounting."
+    },
+    "fa_users": {
+      "owner": "user-service",
+      "description": "FA user profiles, Auth0 identity bindings, authorization role/status/tier, and soft-delete state."
+    },
+    "fa_user_identity_reservations": {
+      "owner": "user-service",
+      "description": "Deterministic Auth0 subject and normalized-email reservation documents used to enforce user identity uniqueness transactionally."
+    },
+    "fa_user_change_events": {
+      "owner": "user-service",
+      "description": "Immutable user profile, status, role, and tier change history."
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "@fa/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node ../../scripts/run-web-vite.mjs --host 127.0.0.1 --port 3100",
+    "build": "tsc --project tsconfig.json --noEmit && node ../../scripts/run-web-vite.mjs build",
+    "preview": "node ../../scripts/run-web-vite.mjs preview --host 127.0.0.1 --port 3100",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@auth0/auth0-react": "^2.8.0",
+    "@fa/i18n": "workspace:*",
+    "@fa/http-contracts": "workspace:*",
+    "@uiw/react-markdown-preview": "^5.2.1",
+    "@uiw/react-md-editor": "^4.1.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.1",
+    "@vitejs/plugin-react": "6.0.2",
+    "tailwindcss": "^4.3.1",
+    "typescript": "^5.7.2",
+    "vite": "8.0.16",
+    "vitest": "^4.0.16"
+  }
+}

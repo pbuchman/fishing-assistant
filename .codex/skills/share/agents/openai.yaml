@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Share'
+  short_description: 'Publish public HTML or Markdown links'
+  default_prompt: 'Use $share to publish this HTML or Markdown content at a public FA share URL.'

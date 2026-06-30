@@ -1,0 +1,252 @@
+{
+  "uid": "fa-logs",
+  "title": "Fishing Assistant Logs",
+  "tags": ["fa", "logs", "observability"],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "loki",
+        "current": {
+          "text": "Grafana Cloud Logs",
+          "value": "grafanacloud-logs"
+        }
+      },
+      {
+        "name": "env",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "${datasource}"
+        },
+        "query": "label_values({app=\"fishing-assistant\"}, env)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "host",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "${datasource}"
+        },
+        "query": "label_values({app=\"fishing-assistant\", env=~\"$env\"}, host)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "${datasource}"
+        },
+        "query": "label_values({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\"}, service)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "source",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "${datasource}"
+        },
+        "query": "label_values({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\"}, source)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Live FA Logs",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "{app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\", source=~\"$source\"}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Latest FA Errors",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 10 },
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "{app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\", source=~\"$source\"} |~ \"(?i)(error|fail|exception|fatal|panic|uncaught)\""
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "FA Log Volume by Service",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "sum by (env, service) (rate({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\", source=~\"$source\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "FA Error Lines by Service",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "sum by (env, service) (count_over_time({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\", source=~\"$source\"} |~ \"(?i)(error|fail|exception|fatal|panic|uncaught)\"[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "FA Top Noisy Services",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "topk(10, sum by (env, service) (count_over_time({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\", source=~\"$source\"}[$__range])))"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "FA Dev vs Prod Log Volume",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "sum by (env) (rate({app=\"fishing-assistant\", env=~\"dev|prod\", host=~\"$host\", service=~\"$service\", source=~\"$source\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "FA Auth Resolver Failures",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "sum by (env, service) (count_over_time({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\", source=~\"$source\"} | json | event=\"auth_resolver_unavailable\"[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "FA Auth Failure Events",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 },
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "sum by (env, service, event) (count_over_time({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\", source=~\"$source\"} | json | event=~\"auth_bearer_missing|auth_bearer_invalid|auth_jwt_invalid|auth_resolver_denied|auth_resolver_unavailable|auth_admin_required|auth_internal_failed\"[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "FA User Service Health 5xx",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "count_over_time({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", source=\"nginx\"} |= \"/api/users/health\" |~ \"\\\\s5[0-9]{2}\\\\s\"[$__rate_interval])"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "FA Usage Ingest Failures",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "sum by (env, service) (count_over_time({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\", source=~\"$source\"} |= \"Usage service ingest request failed\"[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "FA Knowledge Access Monitors",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 50 },
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "sum by (env, service) (count_over_time({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\", source=~\"$source\"} |= \"knowledge_access_refresh_job_failed\"[$__rate_interval]))"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "sum by (env, service) (count_over_time({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\", source=~\"$source\"} |= \"knowledge_access_chunk_marked_stale\"[$__rate_interval]))"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "loki", "uid": "${datasource}" },
+          "expr": "sum by (env, service) (count_over_time({app=\"fishing-assistant\", env=~\"$env\", host=~\"$host\", service=~\"$service\", source=~\"$source\"} |= \"knowledge_access_mismatch_detected\"[$__rate_interval]))"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@fa/user-service",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "build": "node ../../scripts/build-service.mjs user-service",
+    "test": "vitest run --root ../.. apps/user-service/src"
+  },
+  "dependencies": {
+    "@fa/common-core": "workspace:*",
+    "@fa/common-http": "workspace:*",
+    "@fa/http-contracts": "workspace:*",
+    "@fa/http-server": "workspace:*",
+    "@fa/infra-firestore": "workspace:*",
+    "@fa/infra-observability": "workspace:*",
+    "dotenv": "^17.2.3",
+    "fastify": "^5.6.2"
+  }
+}

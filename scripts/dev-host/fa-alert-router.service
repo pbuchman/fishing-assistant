@@ -1,0 +1,23 @@
+[Unit]
+Description=Fishing Assistant Grafana alert router
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=FA_ENVIRONMENT=dev
+Environment=FA_ALERT_ROUTER_BIND_HOST=127.0.0.1
+Environment=PORT=9002
+EnvironmentFile=-/etc/fa/observability.env
+User=fa-deploy
+ExecStart=/usr/bin/env bash -lc 'cd "${FA_DEV_DEPLOY_ROOT:?}" && exec /usr/bin/node scripts/observability/alert-router.mjs'
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fa-alert-router
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
