@@ -56,6 +56,17 @@ function buildStreamingSystemPrompt(
   return messages.find((message) => message.role === 'system')?.content ?? '';
 }
 
+function testRetrieveKnowledgeToolCall() {
+  return {
+    id: 'tool-call-1',
+    type: 'function' as const,
+    function: {
+      name: 'retrieveKnowledge',
+      arguments: JSON.stringify({ query: 'produkt A produkt B' }),
+    },
+  };
+}
+
 function expectNoProhibitedKnowledgeBaseTerms(label: string, value: string): void {
   expect(value, label).not.toMatch(/knowledge base/iu);
   expect(value, label).not.toMatch(/\bKB\b/u);
@@ -320,6 +331,27 @@ describe('chatAssistantPrompt', () => {
     expect(system).toContain('Przykład porównania:');
     expect(system).toContain('produkt A');
     expect(system).toContain('produkt B');
+  });
+
+  it('passes retrieved evidence to answer prompts without a tool-call transcript', () => {
+    const toolResultContent = JSON.stringify({
+      query: 'produkt A produkt B',
+      evidence: [{ sourceId: 'S1', title: 'Porównanie', content: 'Produkt A pracuje szybciej.' }],
+      instruction: 'Użyj evidence do odpowiedzi.',
+    });
+    const messages = chatAssistantPrompt.buildStreamingAnswerMessages({
+      now: new Date('2026-06-24T12:00:00.000Z'),
+      latestMessages: [],
+      question: 'Czy lepiej wybrać produkt A czy produkt B?',
+      toolCall: testRetrieveKnowledgeToolCall(),
+      toolResultContent,
+    });
+
+    expect(messages.some((message) => message.role === 'tool')).toBe(false);
+    expect(
+      messages.some((message) => message.role !== 'tool' && (message.toolCalls?.length ?? 0) > 0)
+    ).toBe(false);
+    expect(messages.map((message) => message.content).join('\n')).toContain(toolResultContent);
   });
 
   it('requires local inference markers for synthesized tactical bullets in the streaming answer prompt', () => {

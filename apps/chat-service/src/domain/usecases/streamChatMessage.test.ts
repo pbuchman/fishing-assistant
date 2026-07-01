@@ -137,6 +137,33 @@ class RecordingChatProvider implements LlmChatProvider {
   }
 }
 
+class QueuedStreamChatProvider extends RecordingChatProvider {
+  private readonly streamBatches: ChatCompletionStreamEvent[][];
+
+  constructor(
+    responses: readonly ChatCompletionResponse[],
+    streamBatches: readonly (readonly ChatCompletionStreamEvent[])[]
+  ) {
+    super(responses);
+    this.streamBatches = streamBatches.map((batch) => [...batch]);
+  }
+
+  override async *stream(request: ChatCompletionRequest): AsyncIterable<ChatCompletionStreamEvent> {
+    this.streamRequests.push(request);
+    await Promise.resolve();
+    const batch = this.streamBatches.shift() ?? [];
+    yield* batch;
+  }
+}
+
+class CapturingWarningLogger {
+  readonly warnings: { payload: unknown; message: string | undefined }[] = [];
+
+  warn(payload: unknown, message?: string): void {
+    this.warnings.push({ payload, message });
+  }
+}
+
 function answerMarkdownFromResponse(
   response: ChatCompletionResponse | undefined
 ): string | undefined {
@@ -203,6 +230,7 @@ async function collectStream(
     seedPriorMessages?: boolean;
     answerGapCandidateRepository?: AnswerGapCandidateRepository;
     traceSteps?: import('./streamChatMessage.js').ChatRuntimeTraceStep[];
+    streamWarningLogger?: { warn: (payload: unknown, message?: string) => void };
   } = {}
 ) {
   const conversationRepository = new MemoryConversationRepository();
@@ -254,7 +282,10 @@ async function collectStream(
       clock,
       generateId: ids(['user-message-1', 'assistant-message-1']),
       chatProviderId: 'openrouter',
-      chatModel: 'minimax/minimax-m3',
+      chatModel: 'deepseek/deepseek-v4-flash',
+      ...(options.streamWarningLogger === undefined
+        ? {}
+        : { streamWarningLogger: options.streamWarningLogger }),
       ...(options.traceSteps === undefined
         ? {}
         : {
@@ -349,6 +380,154 @@ describe('streamChatMessage', () => {
     expect(finalMessage.data.content).toBe('Pierwszy fragment odpowiedzi. [S1]');
     expect(chatProvider.streamRequests).toHaveLength(1);
     expect(chatProvider.requests).toHaveLength(2);
+  });
+
+  it('retries an empty answer stream before persisting a failed assistant message', async () => {
+    const chatProvider = new QueuedStreamChatProvider(
+      [
+        chatResponse({
+          finishReason: 'tool_calls',
+          toolCalls: [
+            {
+              id: 'tool-call-1',
+              type: 'function',
+              function: {
+                name: 'retrieveKnowledge',
+                arguments: JSON.stringify({ query: 'condition A instead of condition B delta' }),
+              },
+            },
+          ],
+        }),
+        chatResponse({
+          finishReason: 'stop',
+          text: JSON.stringify({
+            answerMarkdown: 'Druga próba streamu daje widoczną odpowiedź. [S1]',
+            confidence: 'high',
+            usedSources: [{ sourceId: 'S1', usedFor: 'fixture evidence' }],
+            missingInformation: [],
+            followUpQuestions: [],
+          }),
+        }),
+      ],
+      [
+        [
+          {
+            type: 'done',
+            response: chatResponse({
+              finishReason: 'tool_calls',
+              text: '',
+              toolCalls: [
+                {
+                  id: 'tool-call-retry',
+                  type: 'function',
+                  function: {
+                    name: 'retrieveKnowledge',
+                    arguments: JSON.stringify({ query: 'again' }),
+                  },
+                },
+              ],
+            }),
+          },
+        ],
+        [
+          { type: 'text_delta', text: 'Druga próba streamu ' },
+          { type: 'text_delta', text: 'daje widoczną odpowiedź. [S1]' },
+          {
+            type: 'done',
+            response: chatResponse({
+              finishReason: 'stop',
+              text: 'Druga próba streamu daje widoczną odpowiedź. [S1]',
+            }),
+          },
+        ],
+      ]
+    );
+
+    const { events } = await collectStream(
+      {
+        authorization,
+        requester,
+        conversationId: 'conversation-1',
+        message: 'Co by sie zmienilo, gdybym wybral warunek A zamiast warunku B?',
+      },
+      { chatProvider }
+    );
+
+    const finalMessage = events.find((event) => event.type === 'answer.final');
+    expect(finalMessage?.type).toBe('answer.final');
+    if (finalMessage?.type !== 'answer.final') throw new Error('missing final answer event');
+    expect(finalMessage.data.streamStatus).toBe('completed');
+    expect(finalMessage.data.content).toContain('Druga próba streamu');
+    expect(chatProvider.streamRequests).toHaveLength(2);
+    expect(events.at(-1)).toEqual({ type: 'done', data: { ok: true } });
+  });
+
+  it('logs model and answer stream diagnostics when all empty stream attempts fail', async () => {
+    const logger = new CapturingWarningLogger();
+    const chatProvider = new QueuedStreamChatProvider(
+      [
+        chatResponse({
+          finishReason: 'tool_calls',
+          toolCalls: [
+            {
+              id: 'tool-call-1',
+              type: 'function',
+              function: {
+                name: 'retrieveKnowledge',
+                arguments: JSON.stringify({ query: 'condition A instead of condition B delta' }),
+              },
+            },
+          ],
+        }),
+      ],
+      [
+        [
+          {
+            type: 'done',
+            response: chatResponse({
+              finishReason: 'error',
+              text: '',
+              usage: { inputTokens: 50, outputTokens: 5, totalTokens: 55, estimated: false },
+            }),
+          },
+        ],
+        [
+          {
+            type: 'done',
+            response: chatResponse({
+              finishReason: 'tool_calls',
+              text: '',
+              usage: { inputTokens: 60, outputTokens: 6, totalTokens: 66, estimated: false },
+            }),
+          },
+        ],
+      ]
+    );
+
+    const { events } = await collectStream(
+      {
+        authorization,
+        requester,
+        conversationId: 'conversation-1',
+        message: 'Co by sie zmienilo, gdybym wybral warunek A zamiast warunku B?',
+      },
+      { chatProvider, streamWarningLogger: logger }
+    );
+
+    const finalMessage = events.find((event) => event.type === 'answer.final');
+    expect(finalMessage?.type).toBe('answer.final');
+    if (finalMessage?.type !== 'answer.final') throw new Error('missing final answer event');
+    expect(finalMessage.data.streamStatus).toBe('failed');
+    expect(logger.warnings).toHaveLength(1);
+    expect(logger.warnings[0]?.payload).toMatchObject({
+      event: 'chat_answer_failed',
+      chatProviderId: 'openrouter',
+      chatModel: 'deepseek/deepseek-v4-flash',
+      answerStreamAttemptCount: 2,
+      lastAnswerStreamFinishReason: 'tool_calls',
+      lastAnswerStreamInputTokens: 60,
+      lastAnswerStreamOutputTokens: 6,
+    });
   });
 
   it('retrieves with the model-composed tool query instead of the raw latest turn', async () => {
@@ -1136,6 +1315,63 @@ describe('streamChatMessage', () => {
       throw new Error('missing final answer event');
     }
     expect(finalMessage.data.missingInformation).toEqual([legalMissing]);
+  });
+
+  it('removes unsupported current-law claims when current legal evidence is missing', async () => {
+    const legalMissing =
+      'Brak aktualnych przepisów prawnych PZW dotyczących okresu ochronnego, wymiaru ochronnego i limitu połowu sandacza dla konkretnego łowiska lub okręgu';
+    const unsafeAnswer = [
+      'W Bazie Wiedzy nie ma konkretnych przepisów prawnych ani regulaminów łowisk dotyczących sandacza.',
+      'Sandacz odbywa tarło w maju i czerwcu, gdy temperatura wody sięga 12-18°C.',
+      'W całym kraju okres ochronny sandacza to standardowo od 1 stycznia do 31 maja, ale mogą być regionalne różnice.',
+      'Sprawdź oficjalną stronę okręgu PZW.',
+    ].join('\n\n');
+    const chatProvider = new RecordingChatProvider([
+      chatResponse({
+        finishReason: 'tool_calls',
+        toolCalls: [
+          {
+            id: 'tool-call-1',
+            type: 'function',
+            function: {
+              name: 'retrieveKnowledge',
+              arguments: JSON.stringify({ query: 'aktualne przepisy okres ochronny sandacza' }),
+            },
+          },
+        ],
+      }),
+      chatResponse({
+        finishReason: 'stop',
+        text: JSON.stringify({
+          answerMarkdown: unsafeAnswer,
+          confidence: 'low',
+          usedSources: [],
+          missingInformation: [{ description: legalMissing, saveForAdmin: true }],
+          followUpQuestions: [],
+        }),
+      }),
+    ]);
+
+    const { events } = await collectStream(
+      {
+        authorization,
+        requester,
+        conversationId: 'conversation-1',
+        message: 'Jakie są aktualne przepisy i okres ochronny sandacza na moim łowisku?',
+      },
+      { chatProvider }
+    );
+
+    const finalMessage = events.find((event) => event.type === 'answer.final');
+    expect(finalMessage?.type).toBe('answer.final');
+    if (finalMessage?.type !== 'answer.final') {
+      throw new Error('missing final answer event');
+    }
+    expect(finalMessage.data.content).toContain(
+      'Nie mogę podać aktualnych przepisów, okresów ochronnych, wymiarów ani limitów'
+    );
+    expect(finalMessage.data.content).toContain('Sprawdź oficjalną stronę okręgu PZW.');
+    expect(finalMessage.data.content).not.toContain('od 1 stycznia do 31 maja');
   });
 
   it('repairs recoverable usedSources array shape errors', async () => {

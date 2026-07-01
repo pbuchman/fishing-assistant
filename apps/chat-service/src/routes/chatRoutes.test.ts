@@ -153,6 +153,25 @@ class TestingCompletionChatProvider extends StaticChatProvider {
   }
 }
 
+class SlowStreamingTestingCompletionChatProvider extends TestingCompletionChatProvider {
+  override async *stream(request: ChatCompletionRequest): AsyncIterable<ChatCompletionStreamEvent> {
+    this.streamRequests.push(request);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    yield { type: 'text_delta', text: 'Cześć, mogę pomóc ' };
+    yield { type: 'text_delta', text: 'w pytaniach wędkarskich.' };
+    yield {
+      type: 'done',
+      response: {
+        provider: 'fake',
+        model: request.model ?? 'fake-model',
+        finishReason: 'stop',
+        text: 'Cześć, mogę pomóc w pytaniach wędkarskich.',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, estimated: false },
+      },
+    };
+  }
+}
+
 class InvalidFinalAnswerChatProvider extends TestingCompletionChatProvider {
   override complete(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
     this.requests.push(request);
@@ -390,6 +409,40 @@ describe('chat routes', () => {
     expect(chatProvider.requests[0]?.tools?.map((tool) => tool.function.name)).toContain(
       'retrieveKnowledge'
     );
+  });
+
+  it('keeps long testing completions alive with JSON whitespace before the final envelope', async () => {
+    process.env['FA_CHAT_TEST_API_TOKEN'] = testApiToken;
+    setApprovedServices(new SlowStreamingTestingCompletionChatProvider());
+    const app = await createServer({ chatTestCompletionKeepAliveMs: 1 });
+
+    const completed = await app.inject({
+      method: 'POST',
+      url: '/testing/chat/completions',
+      headers: { authorization: `Bearer ${testApiToken}` },
+      payload: {
+        requester: {
+          userId: 'route-user-1',
+          email: 'route-user-1@example.com',
+          role: 'user',
+          effectiveLevel: 7,
+        },
+        message: 'Cześć',
+      },
+    });
+
+    expect(completed.statusCode).toBe(200);
+    expect(completed.body.startsWith('\n')).toBe(true);
+    expect(completed.json()).toMatchObject({
+      ok: true,
+      data: {
+        conversationId: 'conversation-1',
+        assistantMessage: {
+          streamStatus: 'completed',
+          content: 'Cześć, mogę pomóc w pytaniach wędkarskich.',
+        },
+      },
+    });
   });
 
   it('returns technical failure metadata from the non-streaming chat testing endpoint', async () => {

@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer';
 import { timingSafeEqual } from 'node:crypto';
 
 import type { ErrorCode } from '@fa/common-core';
-import { extractBearerToken } from '@fa/common-http';
+import { createErrorEnvelope, createSuccessEnvelope, extractBearerToken } from '@fa/common-http';
 import {
   chatAnswerGapCandidateParamsSchema,
   chatAnswerGapCandidateShareBodySchema,
@@ -114,9 +114,11 @@ function toRagAuthorizationContext(authorization: AuthorizationContext): RagAuth
 
 export interface RegisterChatRoutesOptions {
   streamTimeoutMs: number;
+  chatTestCompletionKeepAliveMs?: number;
 }
 
 const chatTestCompletionTimeoutSafetyMarginMs = 5_000;
+const defaultChatTestCompletionKeepAliveMs = 15_000;
 
 interface ConversationParams {
   conversationId: string;
@@ -217,6 +219,45 @@ function chatTestTechnicalStatus(input: {
 
 function chatTestCompletionTimeoutMs(streamTimeoutMs: number): number {
   return Math.max(1, streamTimeoutMs - chatTestCompletionTimeoutSafetyMarginMs);
+}
+
+function chatTestCompletionKeepAliveMs(options: RegisterChatRoutesOptions): number {
+  const configured = options.chatTestCompletionKeepAliveMs ?? defaultChatTestCompletionKeepAliveMs;
+  return Math.max(1, configured);
+}
+
+function startJsonWhitespaceKeepAlive(
+  reply: FastifyReply,
+  intervalMs: number
+): { sent: () => boolean; stop: () => void } {
+  let sent = false;
+  const timer = setInterval(() => {
+    if (reply.raw.writableEnded || reply.raw.destroyed) {
+      return;
+    }
+    if (!sent) {
+      reply.hijack();
+      reply.raw.statusCode = 200;
+      reply.raw.setHeader('content-type', 'application/json; charset=utf-8');
+      sent = true;
+    }
+    reply.raw.write('\n');
+  }, intervalMs);
+
+  return {
+    sent: () => sent,
+    stop: () => {
+      clearInterval(timer);
+    },
+  };
+}
+
+function sendRawJsonEnvelope(reply: FastifyReply, envelope: unknown, statusCode = 200): void {
+  if (!reply.raw.headersSent) {
+    reply.raw.statusCode = statusCode;
+    reply.raw.setHeader('content-type', 'application/json; charset=utf-8');
+  }
+  reply.raw.end(JSON.stringify(envelope));
 }
 
 export function registerChatRoutes(
@@ -383,6 +424,7 @@ export function registerChatRoutes(
       const timeout = setTimeout(() => {
         abortController.abort(new Error('Chat test completion timed out'));
       }, chatTestCompletionTimeoutMs(options.streamTimeoutMs));
+      const keepAlive = startJsonWhitespaceKeepAlive(reply, chatTestCompletionKeepAliveMs(options));
 
       try {
         for await (const event of streamChatMessage(
@@ -425,13 +467,22 @@ export function registerChatRoutes(
         }
       } finally {
         clearTimeout(timeout);
+        keepAlive.stop();
       }
 
       if (userMessage === undefined || assistantMessage === undefined) {
+        if (keepAlive.sent()) {
+          sendRawJsonEnvelope(
+            reply,
+            createErrorEnvelope('DOWNSTREAM_ERROR', 'Chat test completion did not finish'),
+            502
+          );
+          return;
+        }
         return await reply.fail('DOWNSTREAM_ERROR', 'Chat test completion did not finish');
       }
 
-      return await reply.ok({
+      const response = {
         conversationId,
         createdConversation,
         userMessage,
@@ -444,7 +495,14 @@ export function registerChatRoutes(
           events: traceEvents,
         }),
         technicalStatus: chatTestTechnicalStatus({ assistantMessage, traceSteps }),
-      } satisfies ChatTestCompletionResponse);
+      } satisfies ChatTestCompletionResponse;
+
+      if (keepAlive.sent()) {
+        sendRawJsonEnvelope(reply, createSuccessEnvelope(response));
+        return;
+      }
+
+      return await reply.ok(response);
     },
   });
 

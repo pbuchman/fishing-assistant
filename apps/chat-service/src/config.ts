@@ -7,12 +7,14 @@ export interface ServiceConfig {
   environment: string;
   corsAllowedOrigins: readonly string[];
   streamTimeoutMs: number;
+  chatTestCompletionKeepAliveMs: number;
 }
 
 export const serviceName = 'chat-service';
 export const serviceVersion = '0.1.0';
 export const defaultPort = 3201;
 export const defaultChatStreamTimeoutMs = 300_000;
+export const defaultChatTestCompletionKeepAliveMs = 15_000;
 
 const requiredCommonEnv = [
   'FA_ENVIRONMENT',
@@ -55,6 +57,7 @@ export function createDefaultServiceConfig(): ServiceConfig {
     environment: 'test',
     corsAllowedOrigins: ['http://localhost:3100', 'http://127.0.0.1:3100'],
     streamTimeoutMs: defaultChatStreamTimeoutMs,
+    chatTestCompletionKeepAliveMs: defaultChatTestCompletionKeepAliveMs,
   };
 }
 
@@ -119,5 +122,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
     environment,
     corsAllowedOrigins: deriveCorsAllowedOrigins(env, environment),
     streamTimeoutMs: defaultChatStreamTimeoutMs,
+    chatTestCompletionKeepAliveMs: defaultChatTestCompletionKeepAliveMs,
   };
 }
