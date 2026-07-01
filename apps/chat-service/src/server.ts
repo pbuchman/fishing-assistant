@@ -44,7 +44,10 @@ export async function createServer(
         });
       });
 
-      registerChatRoutes(app, { streamTimeoutMs: serviceConfig.streamTimeoutMs });
+      registerChatRoutes(app, {
+        streamTimeoutMs: serviceConfig.streamTimeoutMs,
+        chatTestCompletionKeepAliveMs: serviceConfig.chatTestCompletionKeepAliveMs,
+      });
       registerAdminSettingsRoutes(app, {
         serviceName: serviceConfig.serviceName,
         environment: serviceConfig.environment,

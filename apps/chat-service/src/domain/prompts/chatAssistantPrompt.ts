@@ -439,20 +439,15 @@ function answerMessages(input: ChatAssistantAnswerPromptInput, system: string): 
     { role: 'user', content: clipPromptText(input.question, 4_000) },
   ];
 
-  if (input.toolCall !== undefined && input.toolResultContent !== undefined) {
-    messages.push(
-      {
-        role: 'assistant',
-        content: '',
-        toolCalls: [input.toolCall],
-      },
-      {
-        role: 'tool',
-        toolCallId: input.toolCall.id,
-        name: retrieveKnowledgeToolName,
-        content: input.toolResultContent,
-      }
-    );
+  if (input.toolResultContent !== undefined) {
+    messages.push({
+      role: 'user',
+      content: [
+        'Pobrane pakiety dowodowe dla bieżącej odpowiedzi:',
+        input.toolResultContent,
+        'Napisz końcową odpowiedź na podstawie tych pakietów. Nie wywołuj narzędzi.',
+      ].join('\n'),
+    });
   }
 
   return messages;

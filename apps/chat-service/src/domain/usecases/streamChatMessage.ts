@@ -118,10 +118,19 @@ const transientLlmRetryPolicy = {
   retryBackoffMs: ({ attempt }) => Math.min(500 * attempt, 1_000),
 } satisfies LlmProviderCallPolicy;
 const maxStructuredOutputRepairAttempts = 3;
+const maxEmptyAnswerStreamAttempts = 2;
 const currentFactScopeQuestionPattern =
   /\b(?:aktualn\p{L}*|bieżąc\p{L}*|biezac\p{L}*|dzisiaj|teraz|obecnie|przepis\p{L}*|praw\p{L}*|pzw|regulamin\p{L}*|okres\p{L}*\s+ochron\p{L}*|wymiar\p{L}*\s+ochron\p{L}*|limit\p{L}*|pozwol\p{L}*|zezwol\p{L}*|licencj\p{L}*|zakaz\p{L}*)\b/iu;
 const currentFactScopeMissingInformationPattern =
   /\b(?:źród\p{L}*\s+prawn\p{L}*|zrodl\p{L}*\s+prawn\p{L}*|regulaminow\p{L}*|aktualn\p{L}*|bieżąc\p{L}*|biezac\p{L}*|przepis\p{L}*|praw\p{L}*|pzw|okres\p{L}*\s+ochron\p{L}*|wymiar\p{L}*\s+ochron\p{L}*|limit\p{L}*|pozwol\p{L}*|zezwol\p{L}*|licencj\p{L}*|zakaz\p{L}*)\b/iu;
+const currentLegalEvidenceGapPattern =
+  /\b(?:brak|nie\s+ma|missing|bez)\b[\s\S]{0,160}\b(?:aktualn\p{L}*|bieżąc\p{L}*|biezac\p{L}*|źród\p{L}*\s+prawn\p{L}*|zrodl\p{L}*\s+prawn\p{L}*|regulamin\p{L}*|przepis\p{L}*|praw\p{L}*|pzw|okres\p{L}*\s+ochron\p{L}*|wymiar\p{L}*\s+ochron\p{L}*|limit\p{L}*)\b/iu;
+const currentLawSubjectPattern =
+  /\b(?:aktualn\p{L}*|bieżąc\p{L}*|biezac\p{L}*|przepis\p{L}*|praw\p{L}*|pzw|regulamin\p{L}*|okres\p{L}*\s+ochron\p{L}*|wymiar\p{L}*\s+ochron\p{L}*|limit\p{L}*|zezwol\p{L}*|pozwol\p{L}*|licencj\p{L}*|zakaz\p{L}*)\b/iu;
+const unsupportedCurrentLawSpecificPattern =
+  /\b(?:od\s+\d{1,2}\s+\p{L}+(?:\s+do\s+\d{1,2}\s+\p{L}+)?)\b|\b\d{1,2}\s*(?:-|do)\s*\d{1,2}\s*(?:cm|szt\.?|sztuk)\b|\b\d{1,3}\s*(?:cm|szt\.?|sztuk)\b|\b(?:w\s+cał\p{L}*\s+kraj\p{L}*|standardow\p{L}*)\b/iu;
+const currentLegalEvidenceGapNotice =
+  'Nie mogę podać aktualnych przepisów, okresów ochronnych, wymiarów ani limitów, bo w Bazie Wiedzy brakuje aktualnego źródła prawnego lub regulaminowego dla tego łowiska.';
 const defaultAnswerGapCoverageProbe: AnswerGapCoverageProbe = {
   classification: 'no_candidate_seen',
   minRequiredLevel: null,
@@ -145,7 +154,12 @@ function structuredJsonReasoning(): ChatReasoningConfig {
 
 function normalizeAnswerForQuestion(answer: ChatOutput, question: string): ChatOutput {
   if (currentFactScopeQuestionPattern.test(question)) {
-    return answer;
+    if (!hasCurrentLegalEvidenceGap(answer)) {
+      return answer;
+    }
+
+    const answerMarkdown = removeUnsupportedCurrentLawClaims(answer.answerMarkdown);
+    return answerMarkdown === answer.answerMarkdown ? answer : { ...answer, answerMarkdown };
   }
 
   const missingInformation = answer.missingInformation.filter(
@@ -154,6 +168,33 @@ function normalizeAnswerForQuestion(answer: ChatOutput, question: string): ChatO
   return missingInformation.length === answer.missingInformation.length
     ? answer
     : { ...answer, missingInformation };
+}
+
+function hasCurrentLegalEvidenceGap(answer: ChatOutput): boolean {
+  return answer.missingInformation.some((item) =>
+    currentLegalEvidenceGapPattern.test(item.description)
+  );
+}
+
+function removeUnsupportedCurrentLawClaims(answerMarkdown: string): string {
+  const paragraphs = answerMarkdown.split(/\n{2,}/u);
+  const safeParagraphs = paragraphs.filter(
+    (paragraph) =>
+      !(
+        currentLawSubjectPattern.test(paragraph) &&
+        unsupportedCurrentLawSpecificPattern.test(paragraph)
+      )
+  );
+  const cleaned = safeParagraphs.join('\n\n').trim();
+  if (cleaned === answerMarkdown.trim()) {
+    return answerMarkdown;
+  }
+
+  if (cleaned.length === 0 || !/\bnie\s+mog[ęe]\b[\s\S]{0,80}\b(?:podać|podac)\b/iu.test(cleaned)) {
+    return [currentLegalEvidenceGapNotice, cleaned].filter((part) => part.length > 0).join('\n\n');
+  }
+
+  return cleaned;
 }
 
 function openRouterGenerationId(raw: unknown): string | null {
@@ -592,6 +633,8 @@ export async function* streamChatMessage(
   let sourceAliases = new Map<string, string>();
   let answerToolCall: ChatToolCall | undefined;
   let answerToolResultContent: string | undefined;
+  let answerStreamAttemptCount = 0;
+  let lastAnswerStreamTraceDetails: Record<string, unknown> | undefined;
 
   async function parseOrRepairAnswer(parseInput: {
     answerText: string;
@@ -841,53 +884,67 @@ export async function* streamChatMessage(
         : {}),
     });
     let streamedAnswerText = '';
-    const answerStreamTraceDetails: Record<string, unknown> = {
-      model: deps.chatModel,
-      promptType: chatAssistantPrompt.name,
-      promptVersion: chatAssistantPrompt.version,
-      sourceAliasCount: sourceAliases.size,
-    };
-    const answerStreamStartedAtDate = deps.clock.now();
-    const answerStreamStartedAt = answerStreamStartedAtDate.toISOString();
-    const answerStreamMonotonicStartedAt = globalThis.performance.now();
-    try {
-      for await (const streamEvent of deps.chatProvider.stream(
-        providerRequest({
-          userId: authorization.userId,
-          provider: deps.chatProviderId,
-          model: deps.chatModel,
-          messages: answerMessages,
-          conversationId: input.conversationId,
-          assistantMessageId,
-          ...(input.signal !== undefined ? { signal: input.signal } : {}),
-        })
-      )) {
-        if (streamEvent.type === 'text_delta') {
-          if (streamEvent.text.length === 0) {
+    for (let attempt = 1; attempt <= maxEmptyAnswerStreamAttempts; attempt += 1) {
+      answerStreamAttemptCount = attempt;
+      const answerStreamTraceDetails: Record<string, unknown> = {
+        model: deps.chatModel,
+        promptType: chatAssistantPrompt.name,
+        promptVersion: chatAssistantPrompt.version,
+        sourceAliasCount: sourceAliases.size,
+        attempt,
+        ...(attempt > 1 ? { retryReason: 'empty_stream' } : {}),
+      };
+      const answerStreamStartedAtDate = deps.clock.now();
+      const answerStreamStartedAt = answerStreamStartedAtDate.toISOString();
+      const answerStreamMonotonicStartedAt = globalThis.performance.now();
+      let attemptAnswerText = '';
+      try {
+        for await (const streamEvent of deps.chatProvider.stream(
+          providerRequest({
+            userId: authorization.userId,
+            provider: deps.chatProviderId,
+            model: deps.chatModel,
+            messages: answerMessages,
+            conversationId: input.conversationId,
+            assistantMessageId,
+            ...(input.signal !== undefined ? { signal: input.signal } : {}),
+          })
+        )) {
+          if (streamEvent.type === 'text_delta') {
+            if (streamEvent.text.length === 0) {
+              continue;
+            }
+            attemptAnswerText += streamEvent.text;
+            yield { type: 'answer.delta', data: { text: streamEvent.text } };
             continue;
           }
-          streamedAnswerText += streamEvent.text;
-          yield { type: 'answer.delta', data: { text: streamEvent.text } };
-          continue;
-        }
 
-        answerStreamTraceDetails['finishReason'] = streamEvent.response.finishReason ?? null;
-        answerStreamTraceDetails['outputTokens'] = streamEvent.response.usage.outputTokens;
-        answerStreamTraceDetails['inputTokens'] = streamEvent.response.usage.inputTokens;
-        answerStreamTraceDetails['generationId'] = openRouterGenerationId(streamEvent.response.raw);
-        if (streamedAnswerText.length === 0 && streamEvent.response.text.length > 0) {
-          streamedAnswerText = streamEvent.response.text;
-          yield { type: 'answer.delta', data: { text: streamEvent.response.text } };
+          answerStreamTraceDetails['finishReason'] = streamEvent.response.finishReason ?? null;
+          answerStreamTraceDetails['outputTokens'] = streamEvent.response.usage.outputTokens;
+          answerStreamTraceDetails['inputTokens'] = streamEvent.response.usage.inputTokens;
+          answerStreamTraceDetails['generationId'] = openRouterGenerationId(
+            streamEvent.response.raw
+          );
+          if (attemptAnswerText.length === 0 && streamEvent.response.text.length > 0) {
+            attemptAnswerText = streamEvent.response.text;
+            yield { type: 'answer.delta', data: { text: streamEvent.response.text } };
+          }
         }
+      } finally {
+        lastAnswerStreamTraceDetails = answerStreamTraceDetails;
+        deps.traceSink?.record({
+          name: 'llm.answer_stream',
+          startedAt: answerStreamStartedAt,
+          completedAt: deps.clock.now().toISOString(),
+          durationMs: Math.max(0, globalThis.performance.now() - answerStreamMonotonicStartedAt),
+          details: answerStreamTraceDetails,
+        });
       }
-    } finally {
-      deps.traceSink?.record({
-        name: 'llm.answer_stream',
-        startedAt: answerStreamStartedAt,
-        completedAt: deps.clock.now().toISOString(),
-        durationMs: Math.max(0, globalThis.performance.now() - answerStreamMonotonicStartedAt),
-        details: answerStreamTraceDetails,
-      });
+
+      if (attemptAnswerText.trim().length > 0) {
+        streamedAnswerText = attemptAnswerText;
+        break;
+      }
     }
 
     if (streamedAnswerText.trim().length === 0) {
@@ -1078,6 +1135,17 @@ export async function* streamChatMessage(
         conversationId: input.conversationId,
         assistantMessageId,
         errorMessage,
+        chatProviderId: deps.chatProviderId,
+        chatModel: deps.chatModel,
+        answerStreamAttemptCount,
+        ...(lastAnswerStreamTraceDetails === undefined
+          ? {}
+          : {
+              lastAnswerStreamFinishReason: lastAnswerStreamTraceDetails['finishReason'] ?? null,
+              lastAnswerStreamInputTokens: lastAnswerStreamTraceDetails['inputTokens'] ?? null,
+              lastAnswerStreamOutputTokens: lastAnswerStreamTraceDetails['outputTokens'] ?? null,
+              lastAnswerStreamGenerationId: lastAnswerStreamTraceDetails['generationId'] ?? null,
+            }),
       },
       'chat answer failed'
     );
