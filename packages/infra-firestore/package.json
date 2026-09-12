@@ -1,6 +1,7 @@
 {
   "name": "@fa/infra-firestore",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {

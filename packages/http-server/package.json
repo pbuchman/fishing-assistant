@@ -1,6 +1,7 @@
 {
   "name": "@fa/http-server",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -14,7 +15,7 @@
   "dependencies": {
     "@fastify/cors": "^11.0.0",
     "@fastify/swagger": "^9.5.1",
-    "@fastify/swagger-ui": "^5.2.3",
+    "@fastify/swagger-ui": "6.1.1",
     "@fa/common-core": "workspace:*",
     "@fa/common-http": "workspace:*",
     "@fa/http-contracts": "workspace:*",

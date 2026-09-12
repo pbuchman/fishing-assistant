@@ -1,3 +1,5 @@
+import http from 'node:http';
+
 import { describe, expect, it } from 'vitest';
 
 import { FaError } from '@fa/common-core';
@@ -44,7 +46,6 @@ describe('createServiceApp', () => {
     });
 
     const rootResponse = await app.inject({ method: 'GET', url: '/' });
-    const docsResponse = await app.inject({ method: 'GET', url: '/docs' });
     const optionsResponse = await app.inject({
       method: 'OPTIONS',
       url: '/health',
@@ -58,11 +59,146 @@ describe('createServiceApp', () => {
         phase: 'foundation',
       },
     });
-    expect(docsResponse.statusCode).toBeGreaterThanOrEqual(200);
-    expect(docsResponse.statusCode).toBeLessThan(400);
     expect(optionsResponse.headers['access-control-allow-origin']).toBe(
       'https://dev.fishing-assistant.online'
     );
+  });
+
+  it('serves the Swagger UI page and preserves its canonical redirect', async () => {
+    const app = await createServiceApp({
+      identity: {
+        serviceName: 'knowledge-service',
+        serviceVersion: '0.1.0',
+        environment: 'test',
+      },
+    });
+
+    const docsResponse = await app.inject({ method: 'GET', url: '/docs' });
+    const redirectResponse = await app.inject({
+      method: 'GET',
+      url: '/docs/static/index.html',
+    });
+    const redirectedPageResponse = await app.inject({ method: 'GET', url: '/docs/' });
+
+    expect(docsResponse.statusCode).toBe(200);
+    expect(docsResponse.headers['content-type']).toMatch(/^text\/html\b/u);
+    expect(docsResponse.body).toContain('<div id="swagger-ui"></div>');
+    expect(docsResponse.body).toContain('/docs/static/swagger-ui.css');
+    expect(docsResponse.body).toContain('/docs/static/swagger-ui-bundle.js');
+    expect(redirectResponse.statusCode).toBe(302);
+    expect(redirectResponse.headers.location).toBe('/docs/');
+    expect(redirectedPageResponse.statusCode).toBe(200);
+    expect(redirectedPageResponse.body).toContain('<div id="swagger-ui"></div>');
+  });
+
+  it('serves the Swagger UI JavaScript and CSS assets', async () => {
+    const app = await createServiceApp({
+      identity: {
+        serviceName: 'knowledge-service',
+        serviceVersion: '0.1.0',
+        environment: 'test',
+      },
+    });
+
+    const javascriptResponse = await app.inject({
+      method: 'GET',
+      url: '/docs/static/swagger-ui-bundle.js',
+    });
+    const cssResponse = await app.inject({
+      method: 'GET',
+      url: '/docs/static/swagger-ui.css',
+    });
+
+    expect(javascriptResponse.statusCode).toBe(200);
+    expect(javascriptResponse.headers['content-type']).toMatch(/^application\/javascript\b/u);
+    expect(javascriptResponse.body).toContain('SwaggerUIBundle');
+    expect(cssResponse.statusCode).toBe(200);
+    expect(cssResponse.headers['content-type']).toMatch(/^text\/css\b/u);
+    expect(cssResponse.body).toContain('.swagger-ui');
+  });
+
+  it('publishes a valid OpenAPI document for the registered service routes', async () => {
+    const app = await createServiceApp({
+      identity: {
+        serviceName: 'chat-service',
+        serviceVersion: '0.1.0',
+        environment: 'test',
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/openapi.json' });
+    const schema = response.json<unknown>();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toMatch(/^application\/json\b/u);
+    expect(schema).toMatchObject({
+      openapi: '3.0.3',
+      info: {
+        title: 'chat-service API',
+        version: '0.1.0',
+      },
+    });
+    expect(schema).toHaveProperty(['paths', '/health', 'get', 'responses', '200']);
+  });
+
+  it('rejects encoded traversal attempts outside the Swagger static asset scope', async () => {
+    const app = await createServiceApp({
+      identity: {
+        serviceName: 'knowledge-service',
+        serviceVersion: '0.1.0',
+        environment: 'test',
+      },
+    });
+
+    await app.listen({ host: '127.0.0.1', port: 0 });
+
+    try {
+      const address = app.server.address();
+      if (address === null || typeof address === 'string') {
+        throw new Error('Expected the test service to listen on a TCP port');
+      }
+
+      const cases = [
+        {
+          path: '/docs/static/%2e/swagger-ui.css',
+          outsideContent: '.swagger-ui',
+        },
+        {
+          path: '/docs/static/%2e%2e/package.json',
+          outsideContent: '"name": "@fastify/swagger-ui"',
+        },
+      ];
+
+      for (const testCase of cases) {
+        const response = await new Promise<{ body: string; statusCode: number | undefined }>(
+          (resolve, reject) => {
+            const request = http.get(
+              {
+                host: '127.0.0.1',
+                port: address.port,
+                path: testCase.path,
+              },
+              (incomingResponse) => {
+                let body = '';
+                incomingResponse.setEncoding('utf8');
+                incomingResponse.on('data', (chunk: string) => {
+                  body += chunk;
+                });
+                incomingResponse.on('end', () => {
+                  resolve({ body, statusCode: incomingResponse.statusCode });
+                });
+              }
+            );
+            request.on('error', reject);
+          }
+        );
+
+        expect(response.statusCode, testCase.path).toBeGreaterThanOrEqual(400);
+        expect(response.body, testCase.path).not.toContain(testCase.outsideContent);
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   it('allows configured CORS origins without reflecting arbitrary origins', async () => {

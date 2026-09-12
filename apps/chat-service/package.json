@@ -1,6 +1,7 @@
 {
   "name": "@fa/chat-service",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
