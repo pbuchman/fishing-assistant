@@ -5,17 +5,20 @@ IFS=$'\n\t'
 
 branch=""
 deploy_sha=""
+mode="deploy"
+latest_main=0
+FA_DEV_STATE_DIR="${FA_DEV_STATE_DIR:-${HOME}/.local/state/fishing-assistant/deploy}"
 FA_DEV_REPO_PATH="${FA_DEV_REPO_PATH:-${HOME}/deploy/fishing-assistant}"
 FA_DEV_ORIGIN="${FA_DEV_ORIGIN:-https://dev.fishing-assistant.online}"
 FA_DEV_PUBLIC_ORIGIN="${FA_DEV_PUBLIC_ORIGIN:-https://dev.fishing-assistant.online}"
-FA_DEV_HOSTNAME="${FA_DEV_HOSTNAME:-dev-host}"
+FA_DEV_HOSTNAME="${FA_DEV_HOSTNAME:-home-dev}"
 FA_DEV_ALLOW_NON_DEV_HOST="${FA_DEV_ALLOW_NON_DEV_HOST:-}"
 remote_url="${FA_DEV_REMOTE_URL:-https://github.com/pbuchman/fishing-assistant.git}"
 source_repo="${FA_DEV_SOURCE_REPO:-}"
 FA_PM2_HOME="${FA_PM2_HOME:-${HOME}/.pm2-fa}"
 
 usage() {
-  printf 'Usage: %s --branch <branch> --sha <commit-sha>\n' "$(basename "$0")"
+  printf 'Usage: %s --branch <branch> --sha <commit-sha> [--prepare-only|--activate-only] | --latest-main\n' "$(basename "$0")"
 }
 
 fail() {
@@ -26,6 +29,9 @@ fail() {
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --prepare-only) mode="prepare"; shift ;;
+      --activate-only) mode="activate"; shift ;;
+      --latest-main) latest_main=1; branch="main"; shift ;;
       --branch)
         shift
         [[ $# -gt 0 ]] || fail "--branch requires a value"
@@ -117,19 +123,11 @@ assert_public_dev_host() {
 }
 
 run_fa_pm2() {
-  PM2_HOME="${FA_PM2_HOME}" env -u PORT direnv exec . pnpm exec pm2 "$@"
+  PM2_HOME="${FA_PM2_HOME}" env -u PORT direnv exec . pnpm exec pm2 "$@" 9>&-
 }
 
 resolve_source_repo() {
-  if [[ -n "${source_repo}" ]]; then
-    return
-  fi
-
-  if git rev-parse --show-toplevel >/dev/null 2>&1; then
-    source_repo="$(git rev-parse --show-toplevel)"
-  else
-    source_repo="${remote_url}"
-  fi
+  source_repo="${source_repo:-${remote_url}}"
 }
 
 ensure_deploy_clone() {
@@ -142,14 +140,26 @@ ensure_deploy_clone() {
 }
 
 fetch_target() {
-  git -C "${FA_DEV_REPO_PATH}" remote set-url origin "${remote_url}" || true
-  if ! git -C "${FA_DEV_REPO_PATH}" fetch --prune "${source_repo}" "${branch}"; then
-    git -C "${FA_DEV_REPO_PATH}" fetch --prune origin "${branch}"
+  [[ -z "$(git -C "${FA_DEV_REPO_PATH}" status --porcelain)" ]] ||
+    fail "Deploy checkout has uncommitted or untracked files; preserve them before retrying"
+  git -C "${FA_DEV_REPO_PATH}" remote set-url origin "${remote_url}"
+  git -C "${FA_DEV_REPO_PATH}" fetch --no-tags "${source_repo}" "${branch}"
+  if [[ "${latest_main}" == "1" ]]; then
+    deploy_sha="$(git -C "${FA_DEV_REPO_PATH}" rev-parse FETCH_HEAD)"
+    if [[ -f "${FA_DEV_STATE_DIR}/active-sha" ]]; then
+      local active_sha
+      active_sha="$(cat "${FA_DEV_STATE_DIR}/active-sha")"
+      [[ "${active_sha}" =~ ^[a-f0-9]{40}$ ]] || fail "Invalid active release record"
+      git -C "${FA_DEV_REPO_PATH}" merge-base --is-ancestor "${active_sha}" "${deploy_sha}" ||
+        fail "Automatic deployment would move backwards or change release history"
+    fi
   fi
+  git -C "${FA_DEV_REPO_PATH}" merge-base --is-ancestor "${deploy_sha}" FETCH_HEAD ||
+    fail "Requested commit is not on the fetched branch"
+}
 
-  if ! git -C "${FA_DEV_REPO_PATH}" cat-file -e "${deploy_sha}^{commit}"; then
-    fail "Commit ${deploy_sha} is not available in ${FA_DEV_REPO_PATH}"
-  fi
+stage() {
+  printf 'FA deploy job=%s stage=%s sha=%s\n' "${FA_DEV_JOB_ID:-manual}" "$1" "${deploy_sha}" >&2
 }
 
 deploy_commit() {
@@ -157,16 +167,34 @@ deploy_commit() {
 
   previous_sha="$(git -C "${FA_DEV_REPO_PATH}" rev-parse HEAD 2>/dev/null || true)"
   git -C "${FA_DEV_REPO_PATH}" reset --hard "${deploy_sha}"
-  git -C "${FA_DEV_REPO_PATH}" clean -df
+  # Ignored configuration stays in place; untracked files were rejected before reset.
 
   cd "${FA_DEV_REPO_PATH}"
   ensure_dev_env_files
+  direnv exec . node scripts/dev-setup.mjs
+  stage install
   direnv exec . pnpm install --frozen-lockfile
   direnv exec . pnpm run generate:service-wiring
   direnv exec . pnpm run verify:service-wiring
   direnv exec . pnpm run verify:env
+  direnv exec . pnpm run verify:static
+  direnv exec . pnpm run verify:observability
   direnv exec . pnpm run verify:data-baseline
+  stage build
   direnv exec . pnpm run build
+  node scripts/dev-host/release-state.mjs prepare "${deploy_sha}" "${FA_DEV_STATE_DIR}"
+  if [[ "${mode}" == "prepare" ]]; then
+    printf '{"status":"prepared","sha":"%s"}\n' "${deploy_sha}"
+    return
+  fi
+  activate_commit
+}
+
+activate_commit() {
+  cd "${FA_DEV_REPO_PATH}"
+  direnv exec . node scripts/dev-setup.mjs
+  node scripts/dev-host/release-state.mjs verify "${deploy_sha}" "${FA_DEV_STATE_DIR}"
+  stage activate
   mkdir -p "${FA_PM2_HOME}"
   run_fa_pm2 startOrReload ecosystem.config.cjs --update-env
   run_fa_pm2 save
@@ -180,26 +208,52 @@ deploy_commit() {
   wait_for_edge_health "${FA_DEV_ORIGIN}/api/users/health"
   FA_DEV_ORIGIN="${FA_DEV_ORIGIN}" direnv exec . node scripts/smoke/e2e-dev.mjs
   direnv exec . node scripts/smoke/auth0-authorize-preflight.mjs
+  run_fa_pm2 jlist | node scripts/dev-host/verify-dev-processes.mjs "${FA_DEV_REPO_PATH}"
+  curl --fail --silent --show-error "${FA_DEV_ORIGIN}/version.json" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const v=JSON.parse(s);if(v.repository!=="pbuchman/fishing-assistant"||v.sha!==process.argv[1])process.exit(1)})' "${deploy_sha}"
 
+  printf '%s\n' "${deploy_sha}" > "${FA_DEV_STATE_DIR}/active-sha.tmp"
+  mv "${FA_DEV_STATE_DIR}/active-sha.tmp" "${FA_DEV_STATE_DIR}/active-sha"
+  stage completed
   printf '{"status":"deployed","environment":"dev","branch":"%s","sha":"%s","previousSha":"%s"}\n' \
     "${branch}" \
     "${deploy_sha}" \
-    "${previous_sha}"
+    "${previous_sha:-}"
 }
 
 main() {
   parse_args "$@"
+  if [[ "${latest_main}" == "1" ]]; then
+    branch=main
+    remote_url=https://github.com/pbuchman/fishing-assistant.git
+    source_repo="${remote_url}"
+  fi
   [[ -n "${branch}" ]] || fail "--branch is required"
-  [[ -n "${deploy_sha}" ]] || fail "--sha is required"
+  [[ "${latest_main}" == "1" || "${deploy_sha}" =~ ^[a-f0-9]{40}$ ]] || fail "--sha must be a full commit SHA"
+  git check-ref-format --branch "${branch}" >/dev/null || fail "Invalid branch"
   require_command git
   require_command curl
   require_command direnv
   require_command pnpm
+  require_command node
+  require_command flock
+  require_command lsof
+  [[ "$(pnpm --version)" == "10.29.3" ]] || fail "pnpm 10.29.3 is required"
+  node -e 'const [a,b]=process.versions.node.split(".").map(Number);if(a<22||(a===22&&b<12))process.exit(1)' || fail "Node >=22.12 is required"
+  mkdir -p "${FA_DEV_STATE_DIR}"
+  chmod 700 "${FA_DEV_STATE_DIR}"
+  exec 9>"${FA_DEV_STATE_DIR}/deploy.lock"
+  flock -x 9
   assert_public_dev_host
   resolve_source_repo
   ensure_deploy_clone
-  fetch_target
-  deploy_commit
+  (cd "${FA_DEV_REPO_PATH}"; ensure_dev_env_files)
+  if [[ "${mode}" == "activate" ]]; then
+    [[ "${latest_main}" == "0" ]] || fail "Activation requires the prepared SHA"
+    activate_commit
+  else
+    fetch_target
+    deploy_commit
+  fi
 }
 
 main "$@"

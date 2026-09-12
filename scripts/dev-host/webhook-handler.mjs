@@ -2,7 +2,9 @@
 // @ts-check
 
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { DeploymentQueue } from './deployment-queue.mjs';
 import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,13 +14,14 @@ const repoRoot = resolve(dirname(modulePath), '../..');
 
 const DEFAULT_PORT = 9001;
 const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024;
-const DEPLOY_SUCCESS_SUMMARY = 'DEV deploy completed';
+const execFileAsync = promisify(execFile);
+const REPOSITORY = 'pbuchman/fishing-assistant';
 const DEPLOY_FAILURE_SUMMARY = 'DEV deploy failed';
 const DEFAULT_REPO_PATH =
   process.env['HOME'] === undefined
     ? repoRoot
     : resolve(process.env['HOME'], 'deploy/fishing-assistant');
-const DEFAULT_DEPLOY_SCRIPT = resolve(repoRoot, 'scripts/deploy/deploy-dev.sh');
+const DEFAULT_DEPLOY_SCRIPT = resolve(DEFAULT_REPO_PATH, 'scripts/deploy/deploy-dev.sh');
 
 class WebhookBodyTooLargeError extends Error {
   constructor() {
@@ -78,32 +81,47 @@ function parsePushTarget(payload) {
  * @returns {boolean}
  */
 function shouldDeployPush(target) {
-  return target.branch === 'main' && !/^0{40}$/.test(target.sha);
+  return (
+    target.branch === 'main' && /^[a-f0-9]{40}$/.test(target.sha) && !/^0{40}$/.test(target.sha)
+  );
 }
 
 /**
- * @param {{ branch: string, sha: string }} target
+ * @param {{ id: string }} job
  * @param {{ repoPath: string, deployScript: string }} options
- * @returns {{ status: string, branch: string, sha: string, summary: string }}
+ * @returns {Promise<string>}
  */
-function deployTarget(target, options) {
-  execFileSync('bash', [options.deployScript, '--branch', target.branch, '--sha', target.sha], {
-    cwd: repoRoot,
+async function deployTarget(job, options) {
+  const execution = execFileAsync('bash', [options.deployScript, '--latest-main'], {
+    cwd: options.repoPath,
     env: {
       ...process.env,
       FA_DEV_REPO_PATH: options.repoPath,
+      FA_DEV_SOURCE_REPO: 'https://github.com/pbuchman/fishing-assistant.git',
+      FA_DEV_REMOTE_URL: 'https://github.com/pbuchman/fishing-assistant.git',
+      FA_DEV_JOB_ID: job.id,
     },
     encoding: 'utf8',
     maxBuffer: 20 * 1024 * 1024,
-    stdio: ['ignore', 'pipe', 'pipe'],
   });
-
-  return {
-    status: 'deployed',
-    branch: target.branch,
-    sha: target.sha,
-    summary: DEPLOY_SUCCESS_SUMMARY,
-  };
+  let stageBuffer = '';
+  execution.child.stderr?.on('data', (chunk) => {
+    stageBuffer += String(chunk);
+    const complete = stageBuffer.split('\n');
+    stageBuffer = (complete.pop() ?? '').slice(-1024);
+    for (const line of complete) {
+      if (/^FA deploy job=[a-f0-9]{64} stage=[a-z-]+ sha=[a-f0-9]{40}$/.test(line)) {
+        process.stdout.write(`${line}\n`);
+      }
+    }
+  });
+  const { stdout } = await execution;
+  const lines = stdout.trim().split('\n');
+  const result = JSON.parse(lines[lines.length - 1] ?? '{}');
+  if (result.status !== 'deployed' || !/^[a-f0-9]{40}$/.test(result.sha ?? '')) {
+    throw new Error('Deployment did not confirm a release');
+  }
+  return result.sha;
 }
 
 /**
@@ -128,13 +146,19 @@ async function readBody(request) {
 }
 
 /**
- * @param {{ port?: number, secret: string, repoPath?: string, deployScript?: string }} options
+ * @param {{ port?: number, secret: string, repoPath?: string, deployScript?: string, stateDirectory?: string | undefined }} options
  * @returns {import('node:http').Server}
  */
 function createWebhookServer(options) {
   const port = options.port ?? DEFAULT_PORT;
   const repoPath = options.repoPath ?? DEFAULT_REPO_PATH;
   const deployScript = options.deployScript ?? DEFAULT_DEPLOY_SCRIPT;
+
+  const queue = new DeploymentQueue(
+    options.stateDirectory ??
+      resolve(process.env['HOME'] ?? repoRoot, '.local/state/fishing-assistant/deploy'),
+    (job) => deployTarget(job, { repoPath, deployScript })
+  );
 
   const server = createServer(async (request, response) => {
     const correlationId = randomUUID();
@@ -175,7 +199,8 @@ function createWebhookServer(options) {
         });
         return;
       }
-      throw error;
+      writeJson(response, 400, { status: 'rejected', reason: 'unreadable body' });
+      return;
     }
 
     if (!verifySignature(body, request.headers['x-hub-signature-256'], options.secret)) {
@@ -191,14 +216,23 @@ function createWebhookServer(options) {
 
     try {
       const payload = JSON.parse(body.toString('utf8'));
+      if (payload?.repository?.full_name !== REPOSITORY || payload.deleted === true) {
+        writeJson(response, 200, { status: 'ignored' });
+        return;
+      }
       const target = parsePushTarget(payload);
       if (target === undefined || !shouldDeployPush(target)) {
         writeJson(response, 200, { status: 'ignored', target });
         return;
       }
 
-      const result = deployTarget(target, { repoPath, deployScript });
-      writeJson(response, 200, { ...result, correlationId });
+      const delivery = request.headers['x-github-delivery'];
+      if (typeof delivery !== 'string' || !/^[a-zA-Z0-9-]{1,128}$/.test(delivery)) {
+        writeJson(response, 400, { status: 'rejected', reason: 'invalid delivery ID' });
+        return;
+      }
+      const job = queue.accept(delivery, target.sha);
+      writeJson(response, 202, { status: 'accepted', jobId: job.id, jobStatus: job.status });
     } catch {
       writeJson(response, 500, {
         status: 'error',
@@ -208,6 +242,9 @@ function createWebhookServer(options) {
     }
   });
 
+  server.on('close', () => {
+    void queue.close();
+  });
   server.listen(port, () => {
     process.stdout.write(`FA webhook handler listening on :${String(port)}\n`);
     process.stdout.write(`Repo: ${repoPath}\n`);
@@ -226,6 +263,7 @@ function main() {
   createWebhookServer({
     port: Number.parseInt(process.env['PORT'] ?? String(DEFAULT_PORT), 10),
     secret,
+    stateDirectory: process.env['FA_DEV_STATE_DIR'],
     repoPath: process.env['FA_DEV_REPO_PATH'] ?? DEFAULT_REPO_PATH,
     deployScript: process.env['FA_DEV_DEPLOY_SCRIPT'] ?? DEFAULT_DEPLOY_SCRIPT,
   });

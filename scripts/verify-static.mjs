@@ -3747,8 +3747,9 @@ function validateDeploymentArtifacts(root) {
     webhookService !== undefined &&
     (!webhookService.includes('Environment=FA_PM2_HOME=') ||
       !webhookService.includes('Environment=PM2_HOME=') ||
-      !webhookService.includes('Environment=FA_NODE_BIN=') ||
-      !webhookService.includes('ExecStart=/usr/bin/env ${FA_NODE_BIN}') ||
+      !webhookService.includes('Environment=PATH=@PATH@') ||
+      !webhookService.includes('ExecStart=/usr/bin/flock --no-fork --nonblock') ||
+      webhookService.includes('%h') ||
       !webhookService.includes('webhook-handler.mjs') ||
       hasSystemdVariableExecutable(webhookService) ||
       hasHomeDirectoryPath(webhookService))

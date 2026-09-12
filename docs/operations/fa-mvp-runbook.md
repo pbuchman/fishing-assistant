@@ -7,7 +7,7 @@ alert-router operations.
 
 ## Environments
 
-- DEV: `dev-host`, PM2, Caddy host `dev.fishing-assistant.online`, deploy
+- DEV: `home-dev` (Tailscale), PM2, Caddy host `dev.fishing-assistant.online`, deploy
   clone `$HOME/deploy/fishing-assistant`.
 - PROD: Hetzner `cx33` in `nbg1`, static primary IPv4, host nginx, one Docker
   container named `fa-services`.
@@ -135,8 +135,9 @@ sudo -n /usr/local/sbin/fa-deploy-nginx /opt/fishing-assistant/current
 
 ## DEV Deploy
 
-Automatic DEV deploys are handled by the `dev-host` webhook after pushes to
-`main`.
+Automatic DEV deploys are handled by the durable webhook on `home-dev` after
+pushes to public `pbuchman/fishing-assistant` main. Connect through Tailscale
+`home-dev` when outside the host network. See the [cutover and systemd procedure](dev-public-repository-cutover.md) for installation, acceptance, and rollback.
 
 Manual DEV deploy from an FA worktree:
 

@@ -1,6 +1,6 @@
 ---
 name: deploy
-description: Deploy Fishing Assistant to dev on dev-host by default, or to prod on Hetzner when explicitly requested.
+description: Deploy Fishing Assistant to dev on home-dev by default, or to prod on Hetzner when explicitly requested.
 ---
 
 # Deploy
@@ -68,7 +68,10 @@ action.
 
 ## DEV Deploy
 
-DEV runs on `dev-host` under PM2.
+DEV runs on `home-dev` under PM2. Use the Tailscale name `home-dev` for SSH
+when connecting from another network. Do not rely on a changing LAN address.
+The public repository cutover and systemd installation procedure is documented
+in `docs/operations/dev-public-repository-cutover.md`.
 
 Default target:
 
