@@ -137,12 +137,8 @@ describe('createServiceApp', () => {
         title: 'chat-service API',
         version: '0.1.0',
       },
-      paths: {
-        '/health': {
-          get: expect.any(Object),
-        },
-      },
     });
+    expect(schema).toHaveProperty(['paths', '/health', 'get', 'responses', '200']);
   });
 
   it('rejects encoded traversal attempts outside the Swagger static asset scope', async () => {
