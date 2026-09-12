@@ -1,25 +1,29 @@
 [Unit]
-Description=Fishing Assistant GitHub webhook handler
-After=network.target caddy.service
-Wants=network.target
+Description=Fishing Assistant durable deployment webhook
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=fa-deploy
-WorkingDirectory=%h/tools/fa-webhook-handler
+User=@USER@
+Environment=HOME=@HOME@
+Environment=PATH=@PATH@
+Environment=FA_DEV_HOSTNAME=home-dev
+Environment=FA_DEV_REPO_PATH=@REPO@
+Environment=FA_DEV_STATE_DIR=@STATE@
+Environment=FA_DEV_REMOTE_URL=https://github.com/pbuchman/fishing-assistant.git
+Environment=FA_PM2_HOME=@HOME@/.pm2-fa
+Environment=PM2_HOME=@HOME@/.pm2-fa
+UMask=0077
+WorkingDirectory=@REPO@
 Environment=PORT=9001
-Environment=FA_NODE_BIN=/usr/bin/node
-Environment=FA_DEV_REPO_PATH=%h/deploy/fishing-assistant
-Environment=FA_DEV_DEPLOY_SCRIPT=%h/deploy/fishing-assistant/scripts/deploy/deploy-dev.sh
-Environment=FA_PM2_HOME=%h/.pm2-fa
-Environment=PM2_HOME=%h/.pm2-fa
-EnvironmentFile=-%h/tools/fa-webhook-handler/.env
-ExecStart=/usr/bin/env ${FA_NODE_BIN} %h/tools/fa-webhook-handler/webhook-handler.mjs
-Restart=always
+Environment=FA_DEV_DEPLOY_SCRIPT=@REPO@/scripts/deploy/deploy-dev.sh
+EnvironmentFile=@RUNTIME@/.env
+ExecStart=/usr/bin/flock --no-fork --nonblock @STATE@/worker.lock @NODE@ @RUNTIME@/webhook-handler.mjs
+Restart=on-failure
 RestartSec=5
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=fa-webhook-handler
+KillMode=control-group
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target

@@ -142,7 +142,7 @@ function createServiceConfig(service) {
     autorestart: true,
     kill_timeout: 5000,
     restart_delay: 5000,
-    watch: ['src'],
+    watch: false,
     ignore_watch: ['**/*.test.ts', '**/*.spec.ts', '**/__tests__/**'],
     watch_delay: 1000,
   };
@@ -153,6 +153,7 @@ module.exports = {
     ...SERVICES.map((service) => createServiceConfig(service)),
     {
       name: 'fa-web',
+      watch: false,
       cwd: './apps/web',
       script: WEB_VITE_CLI,
       args: ['preview', '--host', '127.0.0.1', '--port', '3100'],

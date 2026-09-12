@@ -1075,12 +1075,12 @@ function withStaticFixture<T>(files: Record<string, string | null>, run: (root: 
       'scripts/dev-host/webhook-handler.service',
       [
         '[Service]',
-        'Environment=FA_NODE_BIN=/usr/bin/node',
-        'Environment=FA_DEV_REPO_PATH=%h/deploy/fishing-assistant',
-        'Environment=FA_DEV_DEPLOY_SCRIPT=%h/deploy/fishing-assistant/scripts/deploy/deploy-dev.sh',
-        'Environment=FA_PM2_HOME=%h/.pm2-fa',
-        'Environment=PM2_HOME=%h/.pm2-fa',
-        'ExecStart=/usr/bin/env ${FA_NODE_BIN} %h/tools/fa-webhook-handler/webhook-handler.mjs',
+        'Environment=PATH=@PATH@',
+        'Environment=FA_DEV_REPO_PATH=@HOME@/deploy/fishing-assistant',
+        'Environment=FA_DEV_DEPLOY_SCRIPT=@HOME@/deploy/fishing-assistant/scripts/deploy/deploy-dev.sh',
+        'Environment=FA_PM2_HOME=@HOME@/.pm2-fa',
+        'Environment=PM2_HOME=@HOME@/.pm2-fa',
+        'ExecStart=/usr/bin/flock --no-fork --nonblock @STATE@/worker.lock @NODE@ @RUNTIME@/webhook-handler.mjs',
         '',
       ].join('\n')
     );

@@ -97,7 +97,7 @@ accessible Knowledge Base is missing information.
 | Environment | Target                                  | Manager                                           | Deployment                                                         |
 | ----------- | --------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------ |
 | `local`     | current checkout                        | PM2 + Vite dev server                             | none; manual `pnpm run dev`                                        |
-| `dev`       | `dev-host` deploy clone                 | PM2 + built web preview behind DEV edge routing   | GitHub webhook after merge/push to `main`, plus Codex deploy skill |
+| `dev`       | `home-dev` deploy clone                 | PM2 + built web preview behind DEV edge routing   | GitHub webhook after merge/push to `main`, plus Codex deploy skill |
 | `prod`      | Hetzner static primary IPv4 + `cx33` VM | nginx + one Docker container running PM2 services | Codex deploy skill / GitHub Actions                                |
 
 `local` is not a deployed environment. It is the current working checkout used

@@ -38,7 +38,7 @@
     "typecheck": "pnpm -r --if-present --parallel run typecheck",
     "typecheck:tests": "tsc --project tsconfig.tests-check.json --noEmit",
     "test": "vitest run",
-    "test:ops": "node --test scripts/dev-host/webhook-handler.test.mjs",
+    "test:ops": "node --test scripts/dev-host/*.test.mjs",
     "test:observability": "node --test scripts/observability/*.test.mjs && pnpm exec vitest run scripts/__tests__/verify-observability.test.ts",
     "test:coverage": "vitest run --coverage",
     "build": "pnpm -r --if-present build",

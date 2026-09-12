@@ -206,7 +206,7 @@ describe('development PM2 config', () => {
     expect(webApp?.env).not.toHaveProperty('FA_MINIMAX_APP_API_KEY');
   });
 
-  it('uses dev backend watch settings without inherited node options or emulator vars', () => {
+  it('disables DEV watch and removes inherited node options or emulator vars', () => {
     const config = withEnv(
       {
         FIRESTORE_EMULATOR_HOST: 'localhost:8080',
@@ -219,7 +219,7 @@ describe('development PM2 config', () => {
     const backendApps = config.apps.filter((app) => app.name !== 'fa-web');
 
     for (const app of backendApps) {
-      expect(app.watch).toEqual(['src']);
+      expect(app.watch).toBe(false);
       expect(app.ignore_watch).toEqual(['**/*.test.ts', '**/*.spec.ts', '**/__tests__/**']);
       expect(app.args).toEqual(['src/index.ts']);
       expect(app.env).not.toHaveProperty('NODE_OPTIONS');

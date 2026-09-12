@@ -1,22 +1,27 @@
 [Unit]
-Description=Fishing Assistant PM2 process manager
-Documentation=https://pm2.keymetrics.io/
-After=network.target
+Description=Fishing Assistant DEV process manager
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-User=fa-deploy
-LimitNOFILE=infinity
-LimitNPROC=infinity
-LimitCORE=infinity
-Environment=FA_PM2_HOME=%h/.pm2-fa
-Environment=PM2_HOME=%h/.pm2-fa
-WorkingDirectory=%h/deploy/fishing-assistant
-ExecStartPre=/usr/bin/direnv allow %h/deploy/fishing-assistant
-ExecStart=/usr/bin/env -u PORT /usr/bin/direnv exec %h/deploy/fishing-assistant pnpm exec pm2 startOrReload ecosystem.config.cjs --update-env
-ExecReload=/usr/bin/env -u PORT /usr/bin/direnv exec %h/deploy/fishing-assistant pnpm exec pm2 reload fa-llm-usage-service fa-knowledge-service fa-chat-service fa-user-service fa-web
-ExecStop=/usr/bin/direnv exec %h/deploy/fishing-assistant pnpm exec pm2 kill
+User=@USER@
+Environment=HOME=@HOME@
+Environment=PATH=@PATH@
+Environment=FA_DEV_HOSTNAME=home-dev
+Environment=FA_DEV_REPO_PATH=@REPO@
+Environment=FA_DEV_STATE_DIR=@STATE@
+Environment=FA_DEV_REMOTE_URL=https://github.com/pbuchman/fishing-assistant.git
+Environment=FA_PM2_HOME=@HOME@/.pm2-fa
+Environment=PM2_HOME=@HOME@/.pm2-fa
+UMask=0077
+WorkingDirectory=@REPO@
+ExecStart=/usr/bin/bash @REPO@/scripts/dev-host/start-prepared.sh
+ExecReload=/usr/bin/bash @REPO@/scripts/dev-host/start-prepared.sh
+ExecStop=/usr/bin/env -u PORT /usr/bin/direnv exec @REPO@ @PNPM@ exec pm2 kill
+TimeoutStartSec=600
+TimeoutStopSec=60
 
 [Install]
 WantedBy=multi-user.target
