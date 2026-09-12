@@ -1,6 +1,7 @@
 {
   "name": "@fa/http-server",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
