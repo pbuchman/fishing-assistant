@@ -1,165 +1,144 @@
 # Fishing Assistant
 
-Fishing Assistant is an authenticated web application for working
-with a managed fishing knowledge base. Admin users maintain Markdown knowledge
-pages, the knowledge service chunks and embeds those pages into a vector-backed
-Firestore data plane, and approved users ask questions through a ChatGPT-like
-chat interface. Answers are composed from retrieved evidence, include citations
-when source URLs are available, and must clearly say when the accessible
-knowledge base does not contain enough information.
+Fishing Assistant is an authenticated reference application for maintaining a
+controlled fishing knowledge base and answering questions from that material.
+It is intended for engineers evaluating a React and Fastify retrieval-augmented
+generation (RAG) application, and for operators who want to run it with their
+own GCP, Auth0, OpenRouter, and MiniMax accounts.
 
-The product is a standalone React and Fastify monorepo. It uses Auth0 for
-browser sign-in, a user service for local authorization and approval state,
-separate backend services for chat, knowledge, and LLM usage tracking, and GCP
-for Firestore, Secret Manager, backups, and public share artifacts. Browser
-clients call same-origin `/api/*` routes generated from one service manifest.
+Approved users can keep per-user conversation histories, stream answers, and
+open citations when a Knowledge Base page has a source link. Administrators can
+write Markdown pages, organize them by category and section, control which
+access tiers may retrieve them, publish or reindex saved content, approve
+users, review knowledge gaps, select a curated chat model, and inspect token and
+cost records. Retrieval combines Firestore vector search with lexical scoring
+and filters evidence by the signed-in user's access before it reaches the chat
+model.
 
-## Repository Shape
+This repository is a technical showcase, not a hosted public demo or an
+included fishing encyclopedia. Running the full product requires accounts,
+credentials, provider billing or credits, and initial cloud configuration.
+Operators are responsible for the rights to Knowledge Base material they add
+and for charges from their GCP and model-provider accounts.
 
-- `apps/web`: Vite React frontend with hash routing, Auth0, chat, profile, and
-  admin Knowledge Base screens.
-- `apps/chat-service`: conversation CRUD, SSE streaming, RAG orchestration, and
-  answer persistence.
-- `apps/knowledge-service`: admin Knowledge Base pages, sync/reindex,
-  embeddings, vector retrieval, and access filtering.
-- `apps/llm-usage-service`: token and cost tracking for chat and embedding
-  usage.
-- `apps/user-service`: Auth0 JWT verification, user bootstrap, approval,
-  suspension, access tiers, and admin user management.
-- `packages/*`: shared contracts, HTTP helpers, Firestore, observability,
-  internal clients, LLM adapters, and pricing helpers.
-- `scripts/*`: env validation, service wiring generation, build, deploy,
-  smoke, migration, observability, and verification tooling.
-- `docs/operations/*`: operator runbooks for deploy/runtime and observability.
+## Guided demo
 
-The main branch is `main`. Agents and humans should work on feature branches
-and open pull requests to `main` unless a task explicitly says otherwise.
+This demo is a reproducible walkthrough using fictional data written for this
+repository. It describes expected behavior from the implementation; it is not
+a captured live run, and the model's exact wording can vary.
 
-## Local Requirements
+1. Complete the [full local setup](docs/getting-started.md#run-the-full-application)
+   and sign in as an approved administrator. Switch the interface to English if
+   useful.
+2. Open **Administration → Knowledge Base**, add a page in any category, choose
+   **Everyone approved** access, and use
+   `https://github.com/pbuchman/fishing-assistant#guided-demo` as its **Source
+   link**. The source link is metadata for citations; the application does not
+   import content from that URL.
+3. Paste this Markdown into the page editor:
 
-- Node `>=22.12.0`
-- pnpm `>=10.29.3`
-- direnv
-- PM2, installed through the workspace dev dependency
-- Access to the GCP project configured by `FA_GCP_PROJECT_ID`
-- Local admin service-account key at the path used by `FA_GCP_ADMIN_KEY_FILE`
+   ```markdown
+   # Fictional canal session log
 
-Local runtime uses real FA GCP resources. Do not set Firestore, Storage, or
-Pub/Sub emulator variables for this project.
+   These test sessions took place on the invented Alder Cut Canal.
 
-## Local Environment
+   ## Session A
 
-Install dependencies:
+   - Feeder: 30 g cage feeder
+   - Hook bait: two grains of sweetcorn
+   - Result: six bream
+
+   ## Session B
+
+   - Feeder: 20 g cage feeder
+   - Hook bait: two red worms
+   - Result: three bream
+   ```
+
+4. Select **Create page draft**. A saved draft is not yet available to chat.
+   Open the page actions, select **Publish page**, and wait until the page is
+   marked **Current** for the assistant.
+5. In Chat, ask questions such as:
+
+   - `What feeder weight and hook bait were used in Session A?`
+   - `Compare the feeder weight and hook bait in Session B with Session A.`
+   - `What was the water temperature during Sessions A and B?`
+
+The first two answers should be grounded in the pasted values and may cite the
+source link. The page contains no temperature, so the last answer should state
+that the accessible Knowledge Base does not provide it instead of inventing a
+value. The model may phrase that response differently. Administrators can then
+review the **Answer gaps** queue, labelled **Knowledge gaps** in the current
+English UI, for the missing-information record and **Usage** for the related
+model and embedding activity.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Browser[React browser app] -->|same-origin /api/*| Edge[Vite, Caddy, or nginx routing]
+    Edge --> Chat[Chat service<br/>Fastify]
+    Edge -->|Knowledge admin + publish| Knowledge[Knowledge service<br/>Fastify]
+    Edge --> Usage[LLM usage service<br/>Fastify]
+    Edge --> Users[User service<br/>Fastify]
+
+    Chat -->|filtered vector + lexical retrieval<br/>X-Internal-Auth| Knowledge
+    Chat -->|usage events<br/>X-Internal-Auth| Usage
+    Chat -->|authorization resolve| Users
+    Knowledge -->|embedding usage<br/>X-Internal-Auth| Usage
+    Knowledge -->|authorization resolve| Users
+    Usage -->|authorization resolve| Users
+
+    Chat -->|curated chat models| Models[OpenRouter / MiniMax]
+    Knowledge -->|OpenRouter embeddings| Models
+    Chat --> Firestore[(Firestore)]
+    Knowledge -->|published pages + chunks| Firestore
+    Usage --> Firestore
+    Users --> Firestore
+```
+
+The browser receives Auth0 tokens and calls only the same-origin API paths from
+`apps/web/service-manifest.json`. Backend-to-backend requests use internal HTTP
+and `X-Internal-Auth`; provider keys and the internal token stay in backend
+processes.
+
+| Service             | Responsibility                                                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `chat-service`      | Conversation CRUD, SSE answer streaming, RAG orchestration, citation persistence, chat model settings, and answer-gap capture.                                                                               |
+| `knowledge-service` | Markdown page administration, publishing and chunking, OpenRouter embeddings, vector plus lexical retrieval, and page/category access filtering. Only published, current, accessible chunks are retrievable. |
+| `llm-usage-service` | Per-request chat and embedding usage events, estimated cost records, aggregates, and admin reporting.                                                                                                        |
+| `user-service`      | Auth0 JWT verification, profile bootstrap, signup restrictions, approval and suspension state, access tiers, and admin user management. Other services resolve user authorization through it.                |
+
+Shared packages contain HTTP contracts, Firestore adapters, internal clients,
+LLM adapters, pricing logic, and observability helpers. The four services use
+Fastify 5; local orchestration uses the workspace's bundled PM2 6.
+
+## Run and verify
+
+For source checks without application credentials:
+
+Use Node.js `>=22.12.0` and pnpm `10.29.3`:
 
 ```bash
 pnpm install --frozen-lockfile
+pnpm run ci
 ```
 
-Create ignored local env files:
+Dependency installation needs network access to the package registry. These
+commands validate the code but do not provide a working runtime or offline
+chat.
 
-```bash
-cp .env.dev.example .env.dev.local
-cp .envrc.example .envrc
-direnv allow
-```
+The full application requires manual GCP, Auth0, and provider setup. Start with
+the detailed guide:
 
-Trusted local shells with GitHub CLI access, GCP Secret Manager access, and the
-FA admin key can render the ignored local env from approved external sources:
+- [Getting started](docs/getting-started.md) — prerequisites, configuration,
+  first migrations, local startup, troubleshooting, and maintainer commands.
+- [Runtime operations](docs/operations/fa-mvp-runbook.md) — existing DEV and
+  production deployment procedures.
+- [Observability operations](docs/operations/fa-observability-runbook.md) —
+  Grafana Cloud Loki, Alloy, and alert-router setup.
 
-```bash
-pnpm run local:env:pull
-direnv allow
-```
-
-`pnpm run local:env:pull` reads DEV Auth0 browser values from GitHub repository
-variables and backend/runtime values from GCP Secret Manager. It must not print
-secret values.
-
-Before trusting local runtime, verify env and GCP access:
-
-```bash
-node scripts/dev-setup.mjs
-```
-
-The checker requires `.env.dev.local`, `.envrc`, `FA_DATA_PLANE=gcp`, a real
-`FA_GCP_PROJECT_ID`, a readable local admin key, real Auth0/provider
-values, and no emulator environment variables.
-
-## Run Locally
-
-Start the full local app:
-
-```bash
-pnpm run dev
-```
-
-`pnpm run dev` runs `scripts/dev-setup.mjs`, regenerates service wiring, starts
-PM2 from `ecosystem.local.config.cjs`, and tails the local service logs.
-
-Useful local service commands:
-
-```bash
-pnpm run services:start
-pnpm run services:status
-pnpm run services:logs
-pnpm run services:restart
-pnpm run services:stop
-```
-
-Open the web app at the Vite local origin configured by the PM2 web process,
-normally `http://127.0.0.1:3100`.
-
-## Rebuild Behavior
-
-Automatically refreshed during `pnpm run dev`:
-
-- Web source and style changes refresh through Vite dev/HMR.
-- Backend service source changes reload through PM2 watch mode.
-- Service URL wiring is regenerated when `pnpm run dev` starts.
-
-Manual action required:
-
-- Change `apps/web/service-manifest.json`: run
-  `pnpm run generate:service-wiring` and `pnpm run verify:service-wiring`, then
-  restart local services if PM2 did not reload the affected process.
-- Change `.env.dev.local`, `.envrc`, PM2 config, package dependencies, or
-  service startup config: run `pnpm run services:restart`.
-- Change dependencies or lockfile: run `pnpm install --frozen-lockfile`, then
-  restart services.
-- Need production-shaped bundles: run `pnpm run build`, `pnpm run build:web`,
-  `pnpm run build:services`, or `pnpm run build:prod` as appropriate.
-- Need a clean full local quality gate: run `pnpm run ci`.
-
-## GCP And Dependencies
-
-Configured GCP project:
-
-```text
-$FA_GCP_PROJECT_ID
-```
-
-Local admin service account:
-
-```text
-$FA_GCP_ADMIN_SERVICE_ACCOUNT
-```
-
-Pin account and project when running GCP commands from a shell that may inherit
-unrelated environment:
-
-```bash
-gcloud --account="$FA_GCP_ADMIN_SERVICE_ACCOUNT" \
-  --project="$FA_GCP_PROJECT_ID" ...
-```
-
-Retained GCP resources include Firestore, Secret Manager, Firestore backups,
-public share artifacts, and service accounts/IAM for those resources. Runtime
-compute is local PM2, DEV PM2 on `dev-host`, or Hetzner nginx plus one Docker
-container for PROD.
-
-## Quality Gates
-
-Common checks:
+Common focused checks are:
 
 ```bash
 pnpm run verify
@@ -169,64 +148,39 @@ pnpm run test
 pnpm run build
 ```
 
-Full local CI:
+`pnpm run ci:prod` adds shell, Terraform, production build, and production
+runtime verification to the normal CI gate. The root package's `pnpm.overrides`
+keep audited transitive packages within their existing major versions; in
+particular, `js-yaml@4` is pinned to `4.3.2` in place of PM2 6's `4.1.1`
+dependency.
 
-```bash
-pnpm run ci
-```
+## Models and current limits
 
-Production readiness:
+The checked-in chat catalog contains three runtime choices:
 
-```bash
-pnpm run ci:prod
-```
+| Provider   | Model                        | Role                                            |
+| ---------- | ---------------------------- | ----------------------------------------------- |
+| OpenRouter | `deepseek/deepseek-v4-flash` | Default chat model, shown as DeepSeek V4 Flash. |
+| OpenRouter | `minimax/minimax-m3`         | Curated MiniMax M3 route through OpenRouter.    |
+| MiniMax    | `MiniMax-M3`                 | Curated direct MiniMax route.                   |
 
-`pnpm run ci` runs service wiring, env checks, security/secret scans,
-typecheck, lint, static verification, knowledge and observability verification,
-ops tests, coverage, build, and format check. `pnpm run ci:prod` adds shell,
-Terraform, production build, and production runtime verification.
+Embeddings use OpenRouter model `qwen/qwen3-embedding-8b` with 2,048
+dimensions. That dimension is coupled to the Firestore vector indexes and
+stored chunks; changing it requires matching index changes and a complete
+Knowledge Base reindex.
 
-## Deployments
+The UI offers Polish (`pl`) and English (`en`) and defaults to Polish. Some
+product copy remains untranslated, and the chat language follows the user's
+question rather than the UI selection.
 
-DEV runs from `$HOME/deploy/fishing-assistant` on `dev-host`. Pushes
-to `main` are deployed by the FA webhook, and manual DEV deploys use:
+Knowledge content is entered as Markdown. There is no URL or PDF importer,
+web-browsing tool, arbitrary model entry, or offline chat mode. Answers depend
+on the pages an administrator has published, the user's access, Firestore
+availability, and external model providers. This repository makes no benchmark
+or exact-answer guarantee.
 
-```bash
-branch="$(git branch --show-current)"
-sha="$(git rev-parse HEAD)"
-scripts/deploy/deploy-dev.sh --branch "$branch" --sha "$sha"
-```
+## License
 
-PROD runs on Hetzner with host nginx serving the web bundle and proxying
-same-origin `/api/*` routes to one Docker container running PM2-managed backend
-services. Production deploys normally use the GitHub Actions deploy workflow
-after the ref is merged to `main`.
-
-Use the Codex deploy skill for deploy requests. It deploys committed branch
-state only and stops on dirty worktrees.
-
-Operational details live in:
-
-- [`docs/operations/fa-mvp-runbook.md`](docs/operations/fa-mvp-runbook.md)
-- [`docs/operations/fa-observability-runbook.md`](docs/operations/fa-observability-runbook.md)
-
-## Migrations
-
-Migration files in `migrations/` are immutable after they have been applied.
-The Firestore `_migrations` ledger stores the checksum applied for each
-migration.
-
-Check live migration status:
-
-```bash
-pnpm run migrate:status
-```
-
-Run intentional offline discovery when credentials are unavailable:
-
-```bash
-node scripts/migrate.mjs --status
-```
-
-Checksum drift is a failure. Restore the original migration or add an explicit
-repair workflow before accepting drift.
+Fishing Assistant is licensed under the [MIT License](LICENSE). Third-party
+software keeps its own license terms; selected packages and notable notices are
+documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
