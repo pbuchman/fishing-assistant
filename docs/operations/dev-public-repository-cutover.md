@@ -84,6 +84,22 @@ Preparation records the SHA, checkout and built web artifact hash outside Git.
 `apps/web/dist/version.json` contains only the repository name and SHA. It is
 created after the build and must match the prepared artifact at activation.
 
+## Check the existing edge before downtime
+
+Before stopping FKA, check that the public homepage and `/index.html` return
+HTTP 200 without credentials. The initial cutover on 2026-09-13 found a legacy
+Caddy `basic_auth` matcher protecting those two paths. Activation correctly
+failed the public smoke check and the operator restored FKA before retrying.
+
+If this legacy gate is present, back up the FA-specific host Caddy site outside
+Git and apply the existing `scripts/dev-host/caddy/fishing-assistant.Caddyfile`
+snippet inside its current host block. Preserve the hostname, port and all other
+hosted applications. Validate the complete Caddy configuration before reloading;
+restore the backup if validation or reload fails. This synchronizes the edge
+with the already checked-in public-homepage configuration. Auth0 and the block
+on public internal API routes remain in place. Repeat the public smoke check
+before beginning the process cutover.
+
 ## Install and switch (privileged host operations)
 
 Approve the existing direnv loader as `pbuchman`, then install the reviewed
