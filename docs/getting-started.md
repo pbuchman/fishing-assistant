@@ -13,6 +13,12 @@ For both paths:
 - pnpm `10.29.3`, matching the root `packageManager` field
 - network access to the package registry during dependency installation
 
+The full `pnpm run ci` and `pnpm run ci:prod` gates also require Linux with
+`flock` from `util-linux` on `PATH`: deployment-script tests use file locking.
+On macOS, run the full gate in a separate Linux checkout or use GitHub Actions;
+the individual lint, typecheck, application-test and build commands remain
+available for focused local checks.
+
 For the full runtime on a Unix-like development machine:
 
 - `direnv` and `lsof`
