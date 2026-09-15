@@ -21,6 +21,29 @@ credentials, provider billing or credits, and initial cloud configuration.
 Operators are responsible for the rights to Knowledge Base material they add
 and for charges from their GCP and model-provider accounts.
 
+## Application screenshots
+
+These captures show the application interface with example data substituted in
+the browser: a fictional profile, conversation history and knowledge titles,
+and an illustrative answer based on general knowledge. No Knowledge Base data
+was changed. The screenshots illustrate the UI; they are not evidence of a
+retrieval run, measured performance or guaranteed model answers.
+
+### Chat with sources
+
+![Chat with an example question, structured answer and knowledge source label](docs/images/chat-demo.png)
+
+An illustrative answer with a source label matching a page in the example knowledge list.
+
+### Knowledge administration
+
+![Knowledge administration with example pages, categories, access and publication status](docs/images/knowledge-admin-demo.png)
+
+Category filtering, per-page access and publication status in the knowledge list.
+
+The [browser acceptance report](docs/operations/dev-streaming-acceptance-2026-09-15.md)
+records the observed streaming, history and usage checks for the tested DEV release.
+
 ## Guided demo
 
 This demo is a reproducible walkthrough using fictional data written for this
@@ -118,6 +141,9 @@ Fastify 5; local orchestration uses the workspace's bundled PM2 6.
 For source checks without application credentials:
 
 Use Node.js `>=22.12.0` and pnpm `10.29.3`:
+
+Run the full gate on Linux with `flock` (from `util-linux`) available. The gate
+includes deployment-script tests that exercise Linux file locking.
 
 ```bash
 pnpm install --frozen-lockfile
