@@ -84,7 +84,7 @@
     "globals": "^15.14.0",
     "jsdom": "^25.0.1",
     "pm2": "7.1.2",
-    "prettier": "^3.4.2",
+    "prettier": "^3.9.10",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.1",
