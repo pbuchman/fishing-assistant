@@ -186,10 +186,11 @@ Prettier; frozen installation, dependency audit and all build checks continue
 to validate it.
 
 Dependabot checks the pnpm workspace and GitHub Actions weekly. Security
-updates are grouped separately. The exact bootstrap Vite 8.1.7 and Rolldown
-platform binding 1.1.7 versions are exempt from its three-day release-age
-resolver window because they were already reviewed and installed for the
-security repair. All other versions retain the cooldown. Authentic Dependabot npm patch updates can
+updates are grouped separately. The exact reviewed bootstrap versions in
+`pnpm-workspace.yaml` are exempt from its three-day release-age resolver
+window, including Vite/Rolldown platform packages and their already installed
+streaming, WebSocket and serialization dependencies. All other versions
+retain the cooldown. Authentic Dependabot npm patch updates can
 request native auto-merge after policy checks; branch protection requires the
 complete `ci` gate. Minor/major changes, workflow changes, package scripts,
 configuration changes and new dependencies require review. The privileged

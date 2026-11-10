@@ -1,7 +1,8 @@
 version: 2
 updates:
   # Dependabot applies a three-day release-age cooldown. Exact reviewed bootstrap
-  # exceptions live in pnpm-workspace.yaml; future versions keep the cooldown.
+  # exceptions for installed bootstrap packages live in pnpm-workspace.yaml.
+  # Fresh-cache recursive resolution verifies them; future versions keep the cooldown.
   - package-ecosystem: npm
     directory: /
     schedule:

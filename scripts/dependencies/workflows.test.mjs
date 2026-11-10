@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
@@ -54,15 +55,30 @@ test('privileged workflow only checks out trusted base, without PR install or co
 
 test('release-age exceptions are exact reviewed versions, never package-wide or wildcard', () => {
   const workspace = readFileSync(path.join(root, 'pnpm-workspace.yaml'), 'utf8');
-  const manifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
-  const lock = readFileSync(path.join(root, 'pnpm-lock.yaml'), 'utf8');
+  // Historical security-bootstrap approvals from 2489183. Keep these independent
+  // of current manifests/lockfiles so later patch updates do not invalidate them.
   const reviewed = new Set([
-    ...Object.entries({ ...manifest.dependencies, ...manifest.devDependencies }).map(
-      ([name, version]) => `${name}@${String(version).replace(/^[~^]/, '')}`
-    ),
-    ...[...lock.matchAll(/^ {2}['"]?([^:'"\n]+@\d+\.\d+\.\d+)['"]?:/gm)].map(
-      (match) => match[1] ?? ''
-    ),
+    '@rolldown/binding-android-arm64@1.1.7',
+    '@rolldown/binding-darwin-arm64@1.1.7',
+    '@rolldown/binding-darwin-x64@1.1.7',
+    '@rolldown/binding-freebsd-x64@1.1.7',
+    '@rolldown/binding-linux-arm-gnueabihf@1.1.7',
+    '@rolldown/binding-linux-arm64-gnu@1.1.7',
+    '@rolldown/binding-linux-arm64-musl@1.1.7',
+    '@rolldown/binding-linux-ppc64-gnu@1.1.7',
+    '@rolldown/binding-linux-s390x-gnu@1.1.7',
+    '@rolldown/binding-linux-x64-gnu@1.1.7',
+    '@rolldown/binding-linux-x64-musl@1.1.7',
+    '@rolldown/binding-openharmony-arm64@1.1.7',
+    '@rolldown/binding-wasm32-wasi@1.1.7',
+    '@rolldown/binding-win32-arm64-msvc@1.1.7',
+    '@rolldown/binding-win32-x64-msvc@1.1.7',
+    'fast-json-stringify@7.3.5',
+    'rolldown@1.1.7',
+    'stream-chain@4.4.2',
+    'stream-json@3.9.0',
+    'ws@8.22.2',
+    'vite@8.1.7',
   ]);
   /** @param {string} config */
   const check = (config) => {
@@ -79,12 +95,59 @@ test('release-age exceptions are exact reviewed versions, never package-wide or 
       assert.match(exception, /^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+@\d+\.\d+\.\d+$/);
       assert.ok(
         reviewed.has(exception),
-        `exception must match an already reviewed exact dependency: ${exception}`
+        `exception must match the reviewed bootstrap approval: ${exception}`
       );
     }
   };
   check(workspace);
   assert.throws(() => check(workspace.replace("'vite@8.1.7'", 'vite')));
   assert.throws(() => check(workspace.replace("'vite@8.1.7'", "'vite@*'")));
+  assert.throws(() => check(workspace.replace("'vite@8.1.7'", "'vite@8.1.8'")));
   assert.throws(() => check(`${workspace}minimumReleaseAge: 0\n`));
+});
+
+test('historical bootstrap exclusions survive newer manifest and lock versions', () => {
+  const fixture = mkdtempSync(path.join(tmpdir(), 'fa-cooldown-future-patch-'));
+  try {
+    mkdirSync(path.join(fixture, 'scripts/dependencies'), { recursive: true });
+    mkdirSync(path.join(fixture, '.github/workflows'), { recursive: true });
+    writeFileSync(path.join(fixture, '.github/workflows/ci.yml'), ci);
+    writeFileSync(
+      path.join(fixture, 'pnpm-workspace.yaml'),
+      readFileSync(path.join(root, 'pnpm-workspace.yaml'))
+    );
+    writeFileSync(
+      path.join(fixture, 'package.json'),
+      JSON.stringify({ dependencies: { vite: '8.1.8' } })
+    );
+    const futureLock = readFileSync(path.join(root, 'pnpm-lock.yaml'), 'utf8')
+      .replaceAll('8.1.7', '8.1.8')
+      .replaceAll('1.1.7', '1.1.8')
+      .replaceAll('7.3.5', '7.3.6')
+      .replaceAll('4.4.2', '4.4.3')
+      .replaceAll('3.9.0', '3.9.1')
+      .replaceAll('8.22.2', '8.22.3');
+    assert.doesNotMatch(futureLock, /vite@8\.1\.7|@rolldown\/binding-[^\n]+@1\.1\.7/);
+    assert.doesNotMatch(
+      futureLock,
+      /stream-chain@4\.4\.2|stream-json@3\.9\.0|fast-json-stringify@7\.3\.5|ws@8\.22\.2/
+    );
+    writeFileSync(path.join(fixture, 'pnpm-lock.yaml'), futureLock);
+    const testFile = path.join(fixture, 'scripts/dependencies/workflows.test.mjs');
+    writeFileSync(testFile, readFileSync(import.meta.filename));
+    const result = spawnSync(
+      process.execPath,
+      ['--test', '--test-name-pattern=^release-age exceptions', testFile],
+      {
+        encoding: 'utf8',
+        env: Object.fromEntries(
+          Object.entries(process.env).filter(([name]) => !name.startsWith('NODE_TEST_'))
+        ),
+      }
+    );
+    assert.match(result.stdout, /release-age exceptions are exact reviewed versions/);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
 });
