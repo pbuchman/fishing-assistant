@@ -50,8 +50,8 @@ importers:
         specifier: 6.1.1
         version: 6.1.1
       dotenv:
-        specifier: ^17.2.3
-        version: 17.4.2
+        specifier: ^18.0.9
+        version: 18.0.9
       fastify:
         specifier: ^5.12.8
         version: 5.12.8
@@ -168,8 +168,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/llm-pricing
       dotenv:
-        specifier: ^17.2.3
-        version: 17.4.2
+        specifier: ^18.0.9
+        version: 18.0.9
 
   apps/knowledge-service:
     dependencies:
@@ -207,8 +207,8 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
       dotenv:
-        specifier: ^17.2.3
-        version: 17.4.2
+        specifier: ^18.0.9
+        version: 18.0.9
 
   apps/llm-usage-service:
     dependencies:
@@ -237,8 +237,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/llm-pricing
       dotenv:
-        specifier: ^17.2.3
-        version: 17.4.2
+        specifier: ^18.0.9
+        version: 18.0.9
       fastify:
         specifier: ^5.12.8
         version: 5.12.8
@@ -264,8 +264,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/infra-observability
       dotenv:
-        specifier: ^17.2.3
-        version: 17.4.2
+        specifier: ^18.0.9
+        version: 18.0.9
       fastify:
         specifier: ^5.12.8
         version: 5.12.8
@@ -2268,9 +2268,10 @@ packages:
     resolution: {integrity: sha512-QM8q3zDe58hqUqjraQOmzZ1LIH9SWQJTlEKCH4kJ2oQvLZk7RbQXvtDM2XEq3fwkV9CCvvH4LA0AV+ogFsBM2Q==}
     engines: {node: '>=8'}
 
-  dotenv@17.4.2:
-    resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
+  dotenv@18.0.9:
+    resolution: {integrity: sha512-3fVOW4cB02R066PUSwn8O4TJyz9NckQl7F81blIbaq9jKBm2tSmOKky7ZHIXzGvkVPXCSn6jkpziBPZdGFs8Tw==}
     engines: {node: '>=12'}
+    hasBin: true
 
   dpop@2.1.1:
     resolution: {integrity: sha512-J0Of2JTiM4h5si0tlbPQ/lkqfZ5wAEVkKYBhkwyyANnPJfWH4VsR5uIkZ+T+OSPIwDYUg1fbd5Mmodd25HjY1w==}
@@ -6893,7 +6894,7 @@ snapshots:
     dependencies:
       is-obj: 2.0.0
 
-  dotenv@17.4.2: {}
+  dotenv@18.0.9: {}
 
   dpop@2.1.1: {}
 

@@ -25,6 +25,6 @@
     "@fa/llm-contract": "workspace:*",
     "@fa/llm-factory": "workspace:*",
     "@fa/llm-pricing": "workspace:*",
-    "dotenv": "^17.2.3"
+    "dotenv": "^18.0.9"
   }
 }

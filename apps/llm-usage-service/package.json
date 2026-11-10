@@ -22,7 +22,7 @@
     "@fa/infra-observability": "workspace:*",
     "@fa/internal-clients": "workspace:*",
     "@fa/llm-pricing": "workspace:*",
-    "dotenv": "^17.2.3",
+    "dotenv": "^18.0.9",
     "fastify": "^5.12.8"
   }
 }
