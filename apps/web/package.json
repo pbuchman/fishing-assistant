@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@auth0/auth0-react": "^2.8.0",
+    "@auth0/auth0-react": "^2.30.0",
     "@fa/i18n": "workspace:*",
     "@fa/http-contracts": "workspace:*",
     "@uiw/react-markdown-preview": "^5.2.1",
