@@ -21,6 +21,6 @@
     "@fa/infra-firestore": "workspace:*",
     "@fa/infra-observability": "workspace:*",
     "dotenv": "^17.2.3",
-    "fastify": "^5.6.2"
+    "fastify": "^5.12.8"
   }
 }

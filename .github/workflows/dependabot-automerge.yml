@@ -1,0 +1,45 @@
+name: Dependabot patch auto-merge
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  enable:
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.user.id == 49699333 &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Never check out or install the untrusted PR. Execute policy from its trusted base SHA.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2
+        id: metadata
+        with:
+          github-token: ${{ github.token }}
+      - name: Enable protected patch auto-merge
+        env:
+          FA_GITHUB_REPOSITORY: ${{ github.repository }}
+          FA_GITHUB_EVENT_PATH: ${{ github.event_path }}
+          FA_GITHUB_TOKEN: ${{ github.token }}
+          FA_UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          FA_DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
+        run: node scripts/dependencies/automerge.mjs
