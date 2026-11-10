@@ -15,6 +15,6 @@
   "dependencies": {
     "@fa/llm-contract": "workspace:*",
     "@fa/llm-pricing": "workspace:*",
-    "eventsource-parser": "3.1.0"
+    "eventsource-parser": "4.1.3"
   }
 }
