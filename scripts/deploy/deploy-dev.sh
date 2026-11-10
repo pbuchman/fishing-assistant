@@ -3,10 +3,14 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# FA DEV resume protocol: 1
+
 branch=""
 deploy_sha=""
 mode="deploy"
 latest_main=0
+resume_after_checkout=0
+previous_sha=""
 FA_DEV_STATE_DIR="${FA_DEV_STATE_DIR:-${HOME}/.local/state/fishing-assistant/deploy}"
 FA_DEV_REPO_PATH="${FA_DEV_REPO_PATH:-${HOME}/deploy/fishing-assistant}"
 FA_DEV_ORIGIN="${FA_DEV_ORIGIN:-https://dev.fishing-assistant.online}"
@@ -32,6 +36,13 @@ parse_args() {
       --prepare-only) mode="prepare"; shift ;;
       --activate-only) mode="activate"; shift ;;
       --latest-main) latest_main=1; branch="main"; shift ;;
+      --resume-after-checkout) resume_after_checkout=1; shift ;;
+      --previous-sha)
+        shift
+        [[ $# -gt 0 ]] || fail "--previous-sha requires a value"
+        previous_sha="$1"
+        shift
+        ;;
       --branch)
         shift
         [[ $# -gt 0 ]] || fail "--branch requires a value"
@@ -163,12 +174,26 @@ stage() {
 }
 
 deploy_commit() {
-  local previous_sha=""
-
+  local target_driver=""
+  target_driver="$(git -C "${FA_DEV_REPO_PATH}" show "${deploy_sha}:scripts/deploy/deploy-dev.sh")" ||
+    fail "Target release has no DEV deployment driver; checkout unchanged"
+  [[ "${target_driver}" == *"# FA DEV resume protocol: 1"* ]] ||
+    fail "Target DEV deployment driver does not support the resume protocol; checkout unchanged"
   previous_sha="$(git -C "${FA_DEV_REPO_PATH}" rev-parse HEAD 2>/dev/null || true)"
   git -C "${FA_DEV_REPO_PATH}" reset --hard "${deploy_sha}"
   # Ignored configuration stays in place; untracked files were rejected before reset.
+  # Bash has already parsed this release's functions. Replace it with the checked-out
+  # script before install/activation so deployment changes apply on their first rollout.
+  local args=(--branch "${branch}" --sha "${deploy_sha}" --resume-after-checkout --previous-sha "${previous_sha}")
+  if [[ "${mode}" == "prepare" ]]; then args+=(--prepare-only); fi
+  exec bash "${FA_DEV_REPO_PATH}/scripts/deploy/deploy-dev.sh" "${args[@]}"
+}
 
+prepare_checkout() {
+  [[ "$(git -C "${FA_DEV_REPO_PATH}" rev-parse HEAD)" == "${deploy_sha}" ]] ||
+    fail "Resumed checkout does not match requested SHA"
+  [[ -z "$(git -C "${FA_DEV_REPO_PATH}" status --porcelain)" ]] ||
+    fail "Resumed checkout has uncommitted or untracked files"
   cd "${FA_DEV_REPO_PATH}"
   ensure_dev_env_files
   direnv exec . node scripts/dev-setup.mjs
@@ -237,18 +262,32 @@ main() {
   require_command pnpm
   require_command node
   require_command flock
+  require_command readlink
   require_command lsof
   [[ "$(pnpm --version)" == "10.29.3" ]] || fail "pnpm 10.29.3 is required"
   node -e 'const [a,b]=process.versions.node.split(".").map(Number);if(a<22||(a===22&&b<12))process.exit(1)' || fail "Node >=22.12 is required"
-  mkdir -p "${FA_DEV_STATE_DIR}"
-  chmod 700 "${FA_DEV_STATE_DIR}"
-  exec 9>"${FA_DEV_STATE_DIR}/deploy.lock"
-  flock -x 9
+  if [[ "${resume_after_checkout}" == "1" ]]; then
+    # The exec inherits the same open lock description. Never reopen FD 9 here:
+    # that would release the lock and let another deployment change the checkout.
+    [[ "${latest_main}" == "0" && "${mode}" != "activate" && "${previous_sha}" =~ ^[a-f0-9]{40}$ ]] ||
+      fail "Invalid deployment resume state"
+    [[ -e "/proc/$$/fd/9" && "$(readlink "/proc/$$/fd/9")" == "$(readlink -f "${FA_DEV_STATE_DIR}/deploy.lock")" ]] ||
+      fail "Deployment resume requires the inherited deployment lock"
+    flock -n 9 || fail "Deployment resume lock is unavailable"
+  else
+    [[ -z "${previous_sha}" ]] || fail "--previous-sha requires checked-out resume"
+    mkdir -p "${FA_DEV_STATE_DIR}"
+    chmod 700 "${FA_DEV_STATE_DIR}"
+    exec 9>"${FA_DEV_STATE_DIR}/deploy.lock"
+    flock -x 9
+  fi
   assert_public_dev_host
   resolve_source_repo
   ensure_deploy_clone
   (cd "${FA_DEV_REPO_PATH}"; ensure_dev_env_files)
-  if [[ "${mode}" == "activate" ]]; then
+  if [[ "${resume_after_checkout}" == "1" ]]; then
+    prepare_checkout
+  elif [[ "${mode}" == "activate" ]]; then
     [[ "${latest_main}" == "0" ]] || fail "Activation requires the prepared SHA"
     activate_commit
   else

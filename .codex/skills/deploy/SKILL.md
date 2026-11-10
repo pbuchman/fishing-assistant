@@ -95,6 +95,15 @@ DEV deploy should:
 12. Restart all FA PM2 services for shared package, ecosystem, routing, or lockfile changes.
 13. Verify health endpoints.
 
+After resetting the checkout to the target SHA, the DEV script execs the
+checked-out version of itself while retaining the deployment lock. Its internal
+resume path validates the target SHA and inherited lock and does not fetch or
+reset again. This prevents an already parsed older activation function from
+running after dependencies and deployment code have changed. Before resetting,
+the script rejects target releases that do not advertise resume protocol 1,
+leaving the checkout unchanged. Historical deployment-driver compatibility is
+not provided; activating an already prepared SHA keeps its existing path.
+
 DEV activation also runs `scripts/dev-host/ensure-pm2-version.mjs` with the
 explicit `FA_PM2_HOME` before reloading apps. It upgrades a stale daemon only
 when every managed process belongs to the five FA apps, and verifies the
