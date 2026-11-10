@@ -18,6 +18,21 @@ const script = resolve('scripts/deploy/deploy-dev.sh');
 const git = (command, args, cwd) =>
   execFileSync(command, args, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
+/** @param {string} bin */
+function isolatedPrerequisites(bin) {
+  for (const command of ['git', 'curl', 'flock', 'readlink', 'mkdir', 'chmod']) {
+    symlinkSync(
+      execFileSync('/bin/sh', ['-c', `command -v ${command}`], { encoding: 'utf8' }).trim(),
+      join(bin, command)
+    );
+  }
+  symlinkSync(process.execPath, join(bin, 'node'));
+  // These negative cases only check availability; reaching either tool is unexpected.
+  for (const command of ['direnv', 'lsof']) {
+    writeFileSync(join(bin, command), '#!/bin/bash\nexit 99\n', { mode: 0o755 });
+  }
+}
+
 for (const failure of ['install', 'verify:env', 'build', 'none']) {
   test(`prepare ${failure === 'none' ? 'succeeds without activating' : `stops on ${failure} failure`}`, () => {
     const dir = mkdtempSync(join(tmpdir(), 'fa-deploy-'));
@@ -215,6 +230,7 @@ test('rejects checked-out resume without an inherited deployment lock', () => {
   try {
     const bin = join(dir, 'bin');
     mkdirSync(bin);
+    isolatedPrerequisites(bin);
     writeFileSync(join(bin, 'pnpm'), '#!/bin/bash\necho 10.29.3\n', { mode: 0o755 });
     const result = (() => {
       try {
@@ -234,7 +250,7 @@ test('rejects checked-out resume without an inherited deployment lock', () => {
           {
             env: {
               ...process.env,
-              PATH: `${bin}:${process.env['PATH']}`,
+              PATH: bin,
               FA_DEV_STATE_DIR: join(dir, 'state'),
               FA_DEV_ORIGIN: 'http://test.invalid',
             },
@@ -261,6 +277,7 @@ test('unsupported historical driver fails before resetting the existing checkout
     const bin = join(dir, 'bin');
     mkdirSync(join(source, 'scripts/deploy'), { recursive: true });
     mkdirSync(bin);
+    isolatedPrerequisites(bin);
     writeFileSync(join(source, '.gitignore'), '.envrc\n.env.dev.local\n');
     const driver = join(source, 'scripts/deploy/deploy-dev.sh');
     writeFileSync(driver, '#!/bin/bash\nexit 0\n');
@@ -308,7 +325,7 @@ test('unsupported historical driver fails before resetting the existing checkout
           {
             env: {
               ...process.env,
-              PATH: `${bin}:${process.env['PATH']}`,
+              PATH: bin,
               FA_DEV_SOURCE_REPO: source,
               FA_DEV_REMOTE_URL: source,
               FA_DEV_REPO_PATH: deploy,
