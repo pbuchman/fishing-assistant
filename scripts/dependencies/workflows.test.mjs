@@ -73,6 +73,11 @@ test('release-age exceptions are exact reviewed versions, never package-wide or 
     '@rolldown/binding-wasm32-wasi@1.1.7',
     '@rolldown/binding-win32-arm64-msvc@1.1.7',
     '@rolldown/binding-win32-x64-msvc@1.1.7',
+    'fast-json-stringify@7.3.5',
+    'rolldown@1.1.7',
+    'stream-chain@4.4.2',
+    'stream-json@3.9.0',
+    'ws@8.22.2',
     'vite@8.1.7',
   ]);
   /** @param {string} config */
@@ -117,8 +122,16 @@ test('historical bootstrap exclusions survive newer manifest and lock versions',
     );
     const futureLock = readFileSync(path.join(root, 'pnpm-lock.yaml'), 'utf8')
       .replaceAll('8.1.7', '8.1.8')
-      .replaceAll('1.1.7', '1.1.8');
+      .replaceAll('1.1.7', '1.1.8')
+      .replaceAll('7.3.5', '7.3.6')
+      .replaceAll('4.4.2', '4.4.3')
+      .replaceAll('3.9.0', '3.9.1')
+      .replaceAll('8.22.2', '8.22.3');
     assert.doesNotMatch(futureLock, /vite@8\.1\.7|@rolldown\/binding-[^\n]+@1\.1\.7/);
+    assert.doesNotMatch(
+      futureLock,
+      /stream-chain@4\.4\.2|stream-json@3\.9\.0|fast-json-stringify@7\.3\.5|ws@8\.22\.2/
+    );
     writeFileSync(path.join(fixture, 'pnpm-lock.yaml'), futureLock);
     const testFile = path.join(fixture, 'scripts/dependencies/workflows.test.mjs');
     writeFileSync(testFile, readFileSync(import.meta.filename));
