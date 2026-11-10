@@ -51,3 +51,40 @@ test('privileged workflow only checks out trusted base, without PR install or co
   assert.doesNotMatch(workflow, /ref:.*head|pnpm install|npm install|--admin|--approve/);
   assert.match(workflow, /dependabot\/fetch-metadata@[a-f0-9]{40}/);
 });
+
+test('release-age exceptions are exact reviewed versions, never package-wide or wildcard', () => {
+  const workspace = readFileSync(path.join(root, 'pnpm-workspace.yaml'), 'utf8');
+  const manifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const lock = readFileSync(path.join(root, 'pnpm-lock.yaml'), 'utf8');
+  const reviewed = new Set([
+    ...Object.entries({ ...manifest.dependencies, ...manifest.devDependencies }).map(
+      ([name, version]) => `${name}@${String(version).replace(/^[~^]/, '')}`
+    ),
+    ...[...lock.matchAll(/^ {2}['"]?([^:'"\n]+@\d+\.\d+\.\d+)['"]?:/gm)].map(
+      (match) => match[1] ?? ''
+    ),
+  ]);
+  /** @param {string} config */
+  const check = (config) => {
+    const section = config.split('minimumReleaseAgeExclude:')[1] ?? '';
+    const exceptions = [...section.matchAll(/^\s+-\s+(.+)$/gm)].map((match) =>
+      (match[1] ?? '').replace(/^['"]|['"]$/g, '')
+    );
+    assert.ok(
+      exceptions.length > 0,
+      'reviewed bootstrap versions must remain resolvable during Dependabot cooldown'
+    );
+    assert.doesNotMatch(config, /minimumReleaseAge:\s*(?:0|false)\b/);
+    for (const exception of exceptions) {
+      assert.match(exception, /^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+@\d+\.\d+\.\d+$/);
+      assert.ok(
+        reviewed.has(exception),
+        `exception must match an already reviewed exact dependency: ${exception}`
+      );
+    }
+  };
+  check(workspace);
+  assert.throws(() => check(workspace.replace("'vite@8.1.7'", 'vite')));
+  assert.throws(() => check(workspace.replace("'vite@8.1.7'", "'vite@*'")));
+  assert.throws(() => check(`${workspace}minimumReleaseAge: 0\n`));
+});

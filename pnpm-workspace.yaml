@@ -2,3 +2,24 @@ packages:
   - 'apps/*'
   - 'packages/*'
   - 'migrations'
+
+# Exact versions already reviewed in the November 2026 security bootstrap.
+# Dependabot keeps its three-day cooldown for all other versions. Rolldown's
+# platform bindings resolve on every host, including optional foreign platforms.
+minimumReleaseAgeExclude:
+  - '@rolldown/binding-android-arm64@1.1.7'
+  - '@rolldown/binding-darwin-arm64@1.1.7'
+  - '@rolldown/binding-darwin-x64@1.1.7'
+  - '@rolldown/binding-freebsd-x64@1.1.7'
+  - '@rolldown/binding-linux-arm-gnueabihf@1.1.7'
+  - '@rolldown/binding-linux-arm64-gnu@1.1.7'
+  - '@rolldown/binding-linux-arm64-musl@1.1.7'
+  - '@rolldown/binding-linux-ppc64-gnu@1.1.7'
+  - '@rolldown/binding-linux-s390x-gnu@1.1.7'
+  - '@rolldown/binding-linux-x64-gnu@1.1.7'
+  - '@rolldown/binding-linux-x64-musl@1.1.7'
+  - '@rolldown/binding-openharmony-arm64@1.1.7'
+  - '@rolldown/binding-wasm32-wasi@1.1.7'
+  - '@rolldown/binding-win32-arm64-msvc@1.1.7'
+  - '@rolldown/binding-win32-x64-msvc@1.1.7'
+  - 'vite@8.1.7'
