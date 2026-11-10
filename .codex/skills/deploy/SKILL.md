@@ -95,6 +95,12 @@ DEV deploy should:
 12. Restart all FA PM2 services for shared package, ecosystem, routing, or lockfile changes.
 13. Verify health endpoints.
 
+DEV activation also runs `scripts/dev-host/ensure-pm2-version.mjs` with the
+explicit `FA_PM2_HOME` before reloading apps. It upgrades a stale daemon only
+when every managed process belongs to the five FA apps, and verifies the
+installed daemon version. Never run a blanket PM2 update against a shared or
+default home. PROD gets the new PM2 runtime through its new services container.
+
 If running on `dev-host`, the deploy script may fetch directly from the current local repository path. If running elsewhere, the branch must be pushed to origin first.
 
 Planned command:
@@ -172,9 +178,10 @@ that has `FA_HETZNER_PROD_HOST` and `FA_HETZNER_DEPLOY_SSH_PRIVATE_KEY`.
 `pnpm run ci:prod` is the local one-shot production gate and already includes
 `pnpm run ci`. Do not run `pnpm run ci` immediately before `pnpm run ci:prod`.
 
-GitHub CI may split the same gate into `pnpm run ci` plus
-`pnpm run ci:prod:extras` so Actions output stays readable without rerunning
-normal CI.
+GitHub CI runs `pnpm run ci:quality` plus `pnpm run ci:prod:extras` in
+`quality` and `pnpm run security:audit` independently in `audit`. The stable
+required `ci` aggregate fails unless both jobs succeed. Local `ci` and
+`ci:prod` retain the audit.
 
 Before a PROD deploy, prefer verifying that `ci.yml` already passed for the
 exact deploy SHA. If no equivalent successful GitHub Actions gate exists for

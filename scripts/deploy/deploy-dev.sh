@@ -196,6 +196,7 @@ activate_commit() {
   node scripts/dev-host/release-state.mjs verify "${deploy_sha}" "${FA_DEV_STATE_DIR}"
   stage activate
   mkdir -p "${FA_PM2_HOME}"
+  FA_PM2_HOME="${FA_PM2_HOME}" env -u PORT direnv exec . node scripts/dev-host/ensure-pm2-version.mjs 9>&-
   run_fa_pm2 startOrReload ecosystem.config.cjs --update-env
   run_fa_pm2 save
   wait_for_health http://127.0.0.1:3201/health

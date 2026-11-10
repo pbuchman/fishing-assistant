@@ -134,7 +134,7 @@ processes.
 
 Shared packages contain HTTP contracts, Firestore adapters, internal clients,
 LLM adapters, pricing logic, and observability helpers. The four services use
-Fastify 5; local orchestration uses the workspace's bundled PM2 6.
+Fastify 5; local orchestration uses the workspace's bundled PM2 7.
 
 ## Run and verify
 
@@ -175,10 +175,48 @@ pnpm run build
 ```
 
 `pnpm run ci:prod` adds shell, Terraform, production build, and production
-runtime verification to the normal CI gate. The root package's `pnpm.overrides`
-keep audited transitive packages within their existing major versions; in
-particular, `js-yaml@4` is pinned to `4.3.2` in place of PM2 6's `4.1.1`
-dependency.
+runtime verification to the normal CI gate. GitHub runs the complete quality
+and production checks in `quality`, with the high/critical dependency audit in
+an independent `audit` job. The required `ci` job succeeds only when both jobs
+succeed; skipped or cancelled jobs fail the aggregate. `pnpm run ci` and
+`pnpm run ci:prod` still include the audit locally, and production deployment
+only reuses a successful `ci.yml` run for its exact commit SHA. The generated
+`pnpm-lock.yaml` keeps pnpm/Dependabot formatting and is excluded from
+Prettier; frozen installation, dependency audit and all build checks continue
+to validate it.
+
+Dependabot checks the pnpm workspace and GitHub Actions weekly. Security
+updates are grouped separately. Authentic Dependabot npm patch updates can
+request native auto-merge after policy checks; branch protection requires the
+complete `ci` gate. Minor/major changes, workflow changes, package scripts,
+configuration changes and new dependencies require review. The privileged
+policy workflow reads manifests as data and executes only the trusted base
+commit, with an expected head SHA checked again at merge enablement.
+
+Preview the constrained, reviewed dependency repairs with:
+
+```bash
+pnpm run security:repair
+pnpm run security:repair --apply
+# Reproduce the explicitly reviewed November 2026 bootstrap from its old baseline:
+pnpm run security:repair --apply --bootstrap
+pnpm run test:dependencies
+```
+
+The repair command updates only explicit package minimums and same-major pnpm
+overrides, regenerates the lockfile with lifecycle scripts disabled, and
+reports every remaining high/critical advisory as blocked. It does not perform
+blanket audit fixes, major migrations or dismiss alerts. The November 2026
+bootstrap removed the unused direct Zod dependency and separately reviewed
+PM2 6 to 7. The optional `--bootstrap` recipe reproduces only that known
+removal and migration; it checks for Zod source imports and rejects unexpected
+Zod or PM2 declarations. Default repairs never perform those actions. Low/moderate findings remain
+visible in the audit and Dependabot alerts.
+
+DEV activation checks the daemon in its explicit `FA_PM2_HOME`. A package
+version change upgrades that daemon before reloading the five FA processes.
+Migration refuses a daemon containing unrelated apps. PROD starts its bundled
+PM2 runtime in a new container for each deployment.
 
 ## Models and current limits
 

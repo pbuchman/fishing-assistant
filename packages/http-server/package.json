@@ -19,6 +19,6 @@
     "@fa/common-core": "workspace:*",
     "@fa/common-http": "workspace:*",
     "@fa/http-contracts": "workspace:*",
-    "fastify": "^5.6.2"
+    "fastify": "^5.12.8"
   }
 }

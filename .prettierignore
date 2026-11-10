@@ -1,1 +1,5 @@
 firestore.rules
+
+# Keep the generated pnpm lockfile in the format emitted by pnpm/Dependabot.
+# Frozen installation, dependency audit and CI builds still validate its contents.
+pnpm-lock.yaml
