@@ -14,7 +14,7 @@
     "test": "vitest run --root ../.. apps/knowledge-service/src"
   },
   "dependencies": {
-    "@fastify/multipart": "^10.0.0",
+    "@fastify/multipart": "^10.1.8",
     "@fa/common-core": "workspace:*",
     "@fa/common-http": "workspace:*",
     "@fa/http-contracts": "workspace:*",
