@@ -134,27 +134,63 @@ Rotate the read token independently from the Alloy write token:
 
 ## Install On DEV
 
-Create `/etc/fa/observability.env` with the Loki and alert-router values, then
-run:
+Create `/etc/fa/observability.env` with the Loki and alert-router values and
+ensure `acl` is installed on Home Dev. Use Bash for the following commands.
+
+In a trusted checkout, use the full commit SHA you reviewed. Transfer the
+archive to Home Dev and record its SHA-256 separately from the target checkout.
 
 ```bash
-sudo scripts/observability/install-alloy.sh --environment dev --host dev-host
+read -r -p 'Reviewed commit SHA: ' fa_revision
+fa_archive="fa-alloy-dev-${fa_revision}.tar"
+git archive --format=tar --output="$fa_archive" "$fa_revision" \
+  scripts/observability scripts/dev-host/fa-alert-router.service
+shasum -a 256 "$fa_archive"
+scp "$fa_archive" home-dev:
 ```
+
+On Home Dev, use that recorded SHA-256 and the actual absolute DEV PM2 log
+directory. Leave `fa_options=()` to install Alloy alone. Set
+`fa_options=(--with-alert-router)` to also install the alert router once its
+entry point is present in the DEV deploy clone.
+
+```bash
+read -r -p 'Reviewed commit SHA: ' fa_revision
+read -r -p 'Approved archive SHA-256: ' fa_digest
+read -r -p 'Absolute DEV PM2 log directory: ' fa_pm2_logs
+fa_archive="$HOME/fa-alloy-dev-${fa_revision}.tar"
+fa_options=()
+
+sudo /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -ceu '
+  [[ $1 =~ ^[0-9a-f]{64}$ && $2 =~ ^[0-9a-f]{40}$ ]]
+  umask 077
+  stage=$(mktemp -d /var/lib/fa-observability-install.XXXXXXXX)
+  trap '\''rm -rf -- "$stage"'\'' EXIT
+  cat > "$stage/release.tar"
+  printf "%s  %s\n" "$1" "$stage/release.tar" | sha256sum --check
+  mkdir "$stage/release"
+  tar --extract --no-same-owner --no-same-permissions \
+    --file "$stage/release.tar" --directory "$stage/release"
+  /bin/bash "$stage/release/scripts/observability/install-alloy.sh" \
+    --environment dev --host dev-host --sha "$2" --pm2-log-dir "$3" "${@:4}"
+' fa-observability "$fa_digest" "$fa_revision" "$fa_pm2_logs" "${fa_options[@]}" < "$fa_archive"
+```
+
+The privileged command takes one copy of the archive into a root-owned
+directory and verifies that copy before extracting and running the installer,
+configuration renderer and setup helpers. Use the same procedure for upgrades.
 
 DEV runs Alloy as the dedicated `fa-alloy` user with read access to the PM2
-log directory and the system journal used by its two unit-filtered sources.
+log directory and the `fa-dev` journal namespace. The webhook handler and the
+alert router write to this namespace. The reader's mount namespace exposes
+only that journal. Its account has no supplementary journal or Docker group.
+Read new unit logs with `journalctl --namespace=fa-dev -u fa-alert-router`
+or `-u fa-webhook-handler`. Earlier logs retain their original journal.
 Its state is under `/var/lib/fa-alloy`. The first upgrade copies the existing
 DEV file and journal cursors while the collector is stopped. The generic
-Docker daemon socket is inaccessible to this reader. A reviewed, root-owned
-copy of `install-dev-alloy-reader.sh --install /absolute/pm2/logs` can
-upgrade an existing DEV reader without reinstalling Alloy or rendering secrets.
-
-After `scripts/observability/alert-router.mjs` is present in the deployed
-clone, install the router too:
-
-```bash
-sudo scripts/observability/install-alloy.sh --environment dev --host dev-host --with-alert-router
-```
+Docker daemon socket is inaccessible to this reader.
+The first namespace cutover restarts the active sources. Wait for any active
+deployment to finish. The installer preserves the Alloy state directory.
 
 The DEV public Caddy site lives outside this repository. Copy or merge
 `scripts/dev-host/caddy/fishing-assistant-observability.Caddyfile`

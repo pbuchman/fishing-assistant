@@ -13,7 +13,6 @@ render() {
 [Service]
 User=fa-alloy
 Group=fa-alloy
-SupplementaryGroups=systemd-journal
 StateDirectory=fa-alloy
 StateDirectoryMode=0750
 UMask=0027
@@ -33,6 +32,7 @@ owner=$(stat -c '%U' "$logs")
 [[ $owner != root && $owner != UNKNOWN ]]
 echo 'u fa-alloy - "Fishing Assistant DEV log reader" /nonexistent /usr/sbin/nologin' |
   systemd-sysusers -
+[[ $(id -Gn fa-alloy) == fa-alloy ]] || { echo 'Review DEV reader groups before installation' >&2; exit 1; }
 # Grant the log owner permission to share its own files; systemd exposes just
 # this subtree inside the service's private /home.
 runuser -u "$owner" -- setfacl -m u:fa-alloy:rx,d:u:fa-alloy:r-- "$logs"
@@ -42,8 +42,17 @@ install -d -o root -g root -m 0755 "${dropin%/*}"
 ready() {
   curl --retry 12 --retry-delay 1 --retry-connrefused --max-time 2 -fsS -o /dev/null http://127.0.0.1:12346/-/ready
 }
-if [[ -e $dropin ]]; then
-  cmp -s "$dropin" <(render) || { echo 'Existing DEV reader override differs' >&2; exit 1; }
+if [[ -e $dropin || -L $dropin ]]; then
+  [[ -f $dropin && ! -L $dropin ]]
+  if ! cmp -s "$dropin" <(render); then
+    # Replace only the known earlier override, removing its broad journal group.
+    cmp -s "$dropin" <(render | sed '/^Group=fa-alloy$/a SupplementaryGroups=systemd-journal') ||
+      { echo 'Existing DEV reader override differs' >&2; exit 1; }
+    next=$(mktemp "${dropin%/*}/.dev-reader.XXXXXXXX")
+    render > "$next"
+    chmod 0644 "$next"
+    mv -T "$next" "$dropin"
+  fi
   systemctl daemon-reload
   systemctl restart fa-alloy.service
   ready
