@@ -141,6 +141,14 @@ run:
 sudo scripts/observability/install-alloy.sh --environment dev --host dev-host
 ```
 
+DEV runs Alloy as the dedicated `fa-alloy` user with read access to the PM2
+log directory and the system journal used by its two unit-filtered sources.
+Its state is under `/var/lib/fa-alloy`. The first upgrade copies the existing
+DEV file and journal cursors while the collector is stopped. The generic
+Docker daemon socket is inaccessible to this reader. A reviewed, root-owned
+copy of `install-dev-alloy-reader.sh --install /absolute/pm2/logs` can
+upgrade an existing DEV reader without reinstalling Alloy or rendering secrets.
+
 After `scripts/observability/alert-router.mjs` is present in the deployed
 clone, install the router too:
 

@@ -9,6 +9,7 @@ environment="dev"
 host_name=""
 deploy_sha="${FA_RELEASE_SHA:-unknown}"
 with_alert_router=false
+pm2_log_dir=""
 
 usage() {
   cat <<'USAGE'
@@ -129,7 +130,6 @@ grant_alloy_log_access() {
 
 render_config() {
   local render_args=()
-  local pm2_log_dir=""
   local dev_home=""
 
   render_args=(
@@ -166,7 +166,11 @@ install_alloy_service() {
     /etc/systemd/system/fa-alloy.service
   systemctl daemon-reload
   systemctl enable fa-alloy
-  systemctl restart fa-alloy
+  if [[ "${environment}" == "dev" ]]; then
+    bash "${repo_root}/scripts/observability/install-dev-alloy-reader.sh" --install "${pm2_log_dir}"
+  else
+    systemctl restart fa-alloy
+  fi
 }
 
 ensure_alert_router_entrypoint() {
@@ -209,7 +213,9 @@ main() {
   detect_host
   validate_inputs
   install_alloy_package
-  grant_alloy_log_access
+  if [[ "${environment}" == "prod" ]]; then
+    grant_alloy_log_access
+  fi
   render_config
   install_alloy_service
 
