@@ -3,17 +3,18 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd -- "${script_dir}/../.." && pwd)"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "${script_dir}/../.." && pwd -P)"
 environment="dev"
 host_name=""
 deploy_sha="${FA_RELEASE_SHA:-unknown}"
 with_alert_router=false
+pm2_log_dir=""
 
 usage() {
   cat <<'USAGE'
-Usage: sudo scripts/observability/install-alloy.sh --environment dev --host dev-host [--with-alert-router]
-       sudo scripts/observability/install-alloy.sh --environment prod --host hetzner-prod --sha <git-sha> [--with-alert-router]
+DEV: follow "Install On DEV" in docs/operations/fa-observability-runbook.md.
+PROD: sudo scripts/observability/install-alloy.sh --environment prod --host hetzner-prod --sha <git-sha> [--with-alert-router]
 USAGE
 }
 
@@ -55,6 +56,12 @@ parse_args() {
         deploy_sha="${1#*=}"
         shift
         ;;
+      --pm2-log-dir)
+        shift
+        [[ $# -gt 0 ]] || fail "--pm2-log-dir requires a value"
+        pm2_log_dir="$1"
+        shift
+        ;;
       --with-alert-router)
         with_alert_router=true
         shift
@@ -72,6 +79,35 @@ parse_args() {
 
 require_root() {
   [[ "$(id -u)" -eq 0 ]] || fail "Run this script as root"
+}
+
+require_protected_path() {
+  local path="$1" metadata
+  [[ ! -L "$path" ]] || fail "Unexpected symlink in DEV release: $path"
+  metadata="$(stat -c '%u:%a' -- "$path")" || fail "Missing DEV release path: $path"
+  [[ "${metadata%%:*}" == 0 && $((8#${metadata#*:} & 022)) -eq 0 ]] ||
+    fail "DEV release path must be root-owned and protected from writes: $path"
+}
+
+require_dev_release() {
+  [[ "$script_dir" == "$repo_root/scripts/observability" &&
+     "$repo_root" =~ ^/var/lib/fa-observability-install\.[a-zA-Z0-9]{8}/release$ ]] ||
+    fail 'Run the DEV installer from a verified root-owned release. See "Install On DEV" in the observability runbook.'
+
+  local path
+  for path in / /var /var/lib "${repo_root%/release}" "$repo_root" \
+    "$repo_root/scripts" "$script_dir" "$script_dir/templates" "$repo_root/scripts/dev-host"; do
+    [[ -d "$path" ]] || fail "Missing DEV release directory: $path"
+    require_protected_path "$path"
+  done
+
+  for path in "$script_dir/install-alloy.sh" "$script_dir/install-dev-alloy-reader.sh" \
+    "$script_dir/install-dev-journal-scope.sh" "$script_dir/render-alloy-config.mjs" \
+    "$script_dir/templates/fa-dev.alloy.tmpl" "$script_dir/fa-alloy.service" \
+    "$script_dir/alert-router.mjs" "$repo_root/scripts/dev-host/fa-alert-router.service"; do
+    [[ -f "$path" ]] || fail "Missing DEV release file: $path"
+    require_protected_path "$path"
+  done
 }
 
 detect_host() {
@@ -129,7 +165,6 @@ grant_alloy_log_access() {
 
 render_config() {
   local render_args=()
-  local pm2_log_dir=""
   local dev_home=""
 
   render_args=(
@@ -139,7 +174,7 @@ render_config() {
   )
 
   if [[ "${environment}" == "dev" ]]; then
-    pm2_log_dir="${FA_PM2_LOG_DIR:-}"
+    pm2_log_dir="${pm2_log_dir:-${FA_PM2_LOG_DIR:-}}"
     if [[ -z "${pm2_log_dir}" && -n "${FA_PM2_HOME:-}" ]]; then
       pm2_log_dir="${FA_PM2_HOME}/logs"
     fi
@@ -150,6 +185,7 @@ render_config() {
     if [[ -z "${pm2_log_dir}" ]]; then
       pm2_log_dir="${HOME}/.pm2-fa/logs"
     fi
+    bash "${script_dir}/install-dev-alloy-reader.sh" --render "${pm2_log_dir}" >/dev/null
     render_args+=(--pm2-log-dir "${pm2_log_dir}")
   fi
 
@@ -166,7 +202,12 @@ install_alloy_service() {
     /etc/systemd/system/fa-alloy.service
   systemctl daemon-reload
   systemctl enable fa-alloy
-  systemctl restart fa-alloy
+  if [[ "${environment}" == "dev" ]]; then
+    bash "${repo_root}/scripts/observability/install-dev-alloy-reader.sh" --install "${pm2_log_dir}"
+    bash "${repo_root}/scripts/observability/install-dev-journal-scope.sh" --install
+  else
+    systemctl restart fa-alloy
+  fi
 }
 
 ensure_alert_router_entrypoint() {
@@ -199,17 +240,26 @@ print_verification_commands() {
   if [[ "${with_alert_router}" == "true" ]]; then
     printf 'Alert router installed. Verify with:\n'
     printf '  systemctl status fa-alert-router --no-pager\n'
-    printf '  journalctl -u fa-alert-router -n 100 --no-pager\n'
+    if [[ "${environment}" == "dev" ]]; then
+      printf '  journalctl --namespace=fa-dev -u fa-alert-router -n 100 --no-pager\n'
+    else
+      printf '  journalctl -u fa-alert-router -n 100 --no-pager\n'
+    fi
   fi
 }
 
 main() {
   parse_args "$@"
+  if [[ "${environment}" == "dev" ]]; then
+    require_dev_release
+  fi
   require_root
   detect_host
   validate_inputs
   install_alloy_package
-  grant_alloy_log_access
+  if [[ "${environment}" == "prod" ]]; then
+    grant_alloy_log_access
+  fi
   render_config
   install_alloy_service
 
