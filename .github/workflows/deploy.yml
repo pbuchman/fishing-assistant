@@ -60,7 +60,7 @@ jobs:
       - name: Resolve deploy SHA
         id: sha
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.29.3
       - uses: actions/setup-node@v4
